@@ -20,7 +20,7 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 	*/
 	struct FundReceiver {
 		uint256 lacShare;
-		uint256 totalAllocatedFunds;
+		uint256 totalAccumulatedFunds;
 	}
 	/*
    =======================================================================
@@ -28,7 +28,6 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
    =======================================================================
  */
 	bytes32 public constant OPERATOR_ROLE = keccak256('OPERATOR_ROLE');
-	bytes32 public constant MINTER_ROLE = keccak256('MINTER_ROLE');
 
 	/*
    =======================================================================
@@ -52,7 +51,7 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 	uint256 public increasePercentage;
 	uint256 public increaseRateAfterWeeks;
 
-	uint256 public lastFundUpdatedBlock;
+	uint256 public lastFundUpdatedTimestamp;
 
 	address[] public fundReceiversList;
 
@@ -96,7 +95,7 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 		maxReleaseRatePerWeek = _maxReleaseRatePerWeek;
 		increasePercentage = _increasePercent;
 		increaseRateAfterWeeks = _increaseRateAfterWeek;
-		lastFundUpdatedBlock = block.number;
+		lastFundUpdatedTimestamp = block.timestamp;
 	}
 
 	/*
@@ -121,12 +120,32 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
    	=======================================================================
  	*/
 
+	/**
+	 * @notice This method allows operators to claim the specified amount of LAC tokens from the fundReceiver
+	 * @param  _amount - indicates the amount of tokens to claim
+	 * @param _receiver - indicates the fund receiver address from which funds to claim
+	 * @param _signature - indicates the singature for claiming the tokens
+	 */
 	function claim(
 		uint256 _amount,
-		address _allocator,
+		address _receiver,
 		bytes calldata _signature
-	) external onlyOperator {
-		require(_verify(_hash(msg.sender), _signature), 'Vault: INVALID_SIGNATURE');
+	) external {
+		(bool isExists, ) = LaCucinaUtils.isAddressExists(fundReceiversList, _receiver);
+		require(isExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
+
+		// update allocated funds
+		updateAllocatedFunds();
+
+		require(
+			_amount > 0 && _amount <= fundReceivers[_receiver].totalAccumulatedFunds,
+			'Vault: INSUFFICIENT_AMOUNT'
+		);
+		require(_verify(_hash(_amount, _receiver), _signature), 'Vault: INVALID_SIGNATURE');
+
+		require(LacToken.transfer(msg.sender, _amount), 'Vault: TRANSFER_FAILED');
+
+		fundReceivers[_receiver].totalAccumulatedFunds -= _amount;
 	}
 
 	/**
@@ -152,6 +171,11 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 		delete fundReceivers[_account];
 	}
 
+	/**
+	 * @notice This method allows admin to update the receiver`s share
+	 * @param _receiver - indicates the address of the fundReceiver
+	 * @param _newShare - indicates the new share for the fundReceiver. ex. 100 = 1%
+	 */
 	function updateReceiverShare(address _receiver, uint256 _newShare) external virtual onlyAdmin {
 		(bool isExists, ) = LaCucinaUtils.isAddressExists(fundReceiversList, _receiver);
 		require(isExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
@@ -167,14 +191,24 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 		}
 	}
 
+	/**
+	 * @notice This method updates the totalAllocated funds for each receiver
+	 */
 	function updateAllocatedFunds() public {
-		for (uint256 i = 0; i < fundReceiversList.length; i++) {
-			fundReceivers[fundReceiversList[i]].totalAllocatedFunds += _updateAccumulatedFunds(
-				fundReceiversList[i]
-			);
-		}
+		if (getMultiplier() > 0) {
+			// update totalAllocated funds for all fundReceivers
+			for (uint256 i = 0; i < fundReceiversList.length; i++) {
+				fundReceivers[fundReceiversList[i]].totalAccumulatedFunds += _getAccumulatedFunds(
+					fundReceiversList[i]
+				);
+			}
 
-		lastFundUpdatedBlock = block.number;
+			if (_isWeeksCompleted()) {
+				_updateReleaseRate();
+			}
+
+			lastFundUpdatedTimestamp = block.timestamp;
+		}
 	}
 
 	/*
@@ -185,41 +219,70 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 	/**
 	 * This method returns the total number of fundReceivers available in vault
 	 */
-	function getTotalFundReceivers() external virtual returns (uint256) {
+	function getTotalFundReceivers() external view virtual returns (uint256) {
 		return fundReceiversList.length;
 	}
 
 	/**
-	 * This method returns the total number of fundReceivers available in vault
+	 * This method returns the share of specified fund receiver
 	 */
-	function getFundReceiverShare(address _receiver) public virtual returns (uint256) {
+	function getFundReceiverShare(address _receiver) public view virtual returns (uint256) {
 		return fundReceivers[_receiver].lacShare / totalShares;
 	}
 
 	/**
-	 * This method returns fundReceiver`s share in current per block amount
+	 * This method returns fundReceiver`s accumulated funds
 	 */
-	function _updateAccumulatedFunds(address _receiver)
+	function _getAccumulatedFunds(address _receiver)
 		internal
+		view
 		virtual
 		returns (uint256 accumulatedFunds)
 	{
 		if (_isWeeksCompleted()) {
-			uint256 totalBlocksBeforeWeeksCompleted;
-      
-			accumulatedFunds = currentReleaseRatePerBlock * getFundReceiverShare(_receiver);
+			uint256 totalBlocks;
+			uint256 weekEndTime = startTime + increaseRateAfterWeeks;
 
-			_updateReleaseRate();
+			// calculate number of weeks before last update happened
+			uint256 totalWeeksCompleted = (block.timestamp - (weekEndTime)) / increaseRateAfterWeeks;
+
+			if (totalWeeksCompleted > 0) {
+				totalBlocks = (totalWeeksCompleted * 1 weeks) / 3;
+			} else {
+				// total blocks passed in the current week
+				totalBlocks = (block.timestamp - (weekEndTime)) / 3;
+
+				// todo - get total blocks before weeks completed i.e weeksLastTimestamp - lastupdated timestamp
+				totalBlocks += ((weekEndTime) - lastFundUpdatedTimestamp) / 3;
+
+				if (totalBlocks > 0) {
+					accumulatedFunds =
+						currentReleaseRatePerBlock *
+						totalBlocks *
+						getFundReceiverShare(_receiver);
+				} else {
+					accumulatedFunds = currentReleaseRatePerBlock * getFundReceiverShare(_receiver);
+				}
+			}
 		} else {
-			accumulatedFunds = currentReleaseRatePerBlock * getFundReceiverShare(_receiver);
+			uint256 multiplier = getMultiplier();
+
+			if (multiplier > 0) {
+				accumulatedFunds =
+					currentReleaseRatePerBlock *
+					multiplier *
+					getFundReceiverShare(_receiver);
+			} else {
+				accumulatedFunds = currentReleaseRatePerBlock * getFundReceiverShare(_receiver);
+			}
 		}
 	}
 
 	/**
 	 * This method returns the multiplier
 	 */
-	function getMultiplier() public virtual returns (uint256) {
-		return block.number - lastFundUpdatedBlock;
+	function getMultiplier() public view virtual returns (uint256) {
+		return (block.timestamp - lastFundUpdatedTimestamp) / 3;
 	}
 
 	/*
@@ -250,11 +313,21 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 		startTime = block.timestamp;
 	}
 
-	function _hash(address account) internal view returns (bytes32) {
-		return _hashTypedDataV4(keccak256(abi.encode(keccak256('claim(address account)'), account)));
+	function _hash(uint256 _amount, address _receiver) internal view returns (bytes32) {
+		return
+			_hashTypedDataV4(
+				keccak256(
+					abi.encode(
+						keccak256('claim(address user,uint256 amount,address receiver)'),
+						msg.sender,
+						_amount,
+						_receiver
+					)
+				)
+			);
 	}
 
 	function _verify(bytes32 _digest, bytes memory _signature) internal view returns (bool) {
-		return hasRole(MINTER_ROLE, ECDSAUpgradeable.recover(_digest, _signature));
+		return hasRole(OPERATOR_ROLE, ECDSAUpgradeable.recover(_digest, _signature));
 	}
 }
