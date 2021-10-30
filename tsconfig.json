@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "es2018",
+    "module": "commonjs",
+    "lib": [
+      "ESNext"
+    ],
+    "moduleResolution": "node",
+    "outDir": "",
+    "incremental": false,
+    "esModuleInterop": true,
+    "strictPropertyInitialization": false
+  },
+  "exclude": [
+    "node_modules/*",
+    "dist/*",
+    "scripts/*"
+  ]
+}
