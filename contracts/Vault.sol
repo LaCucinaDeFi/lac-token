@@ -3,7 +3,6 @@ pragma solidity ^0.8.0;
 import '@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PausableUpgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/utils/cryptography/draft-EIP712Upgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/utils/cryptography/ECDSAUpgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol';
@@ -11,8 +10,6 @@ import '@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol';
 import './library/LacTokenUtils.sol';
 
 contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUpgradeable {
-	using CountersUpgradeable for CountersUpgradeable.Counter;
-
 	/*
    =======================================================================
    ======================== Structures ===================================
@@ -41,15 +38,15 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 
 	uint256 public totalShares;
 	uint256 public startTime;
-	uint256 public currentReleaseRatePerWeek;
+	uint256 public currentReleaseRatePerPeriod;
 	uint256 public currentReleaseRatePerBlock;
-	uint256 public maxReleaseRatePerWeek;
-
+	uint256 public maxReleaseRatePerPeriod;
 	uint256 public increasePercentage;
-	uint256 public increaseRateAfterWeeks;
-
+	uint256 public increaseRateAfterPeriods;
 	uint256 public lastFundUpdatedTimestamp;
 
+	uint256 public blockTime;
+	uint256 public shareMultiplier;
 	address[] public fundReceiversList;
 
 	/// fundReceiver => share percentage
@@ -68,32 +65,39 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 		string memory _name,
 		string memory _version,
 		address _lacAddress,
-		uint256 _initialReleaseRatePerWeek,
-		uint256 _maxReleaseRatePerWeek,
+		uint256 _initialReleaseRatePerPeriod,
+		uint256 _maxReleaseRatePerPeriod,
 		uint256 _increasePercent,
-		uint256 _increaseRateAfterWeek
+		uint256 _increaseRateAfterPeriod
 	) external virtual initializer {
 		require(_lacAddress != address(0), 'Vault: INVALID_LAC_ADDRESS');
-
 		__AccessControl_init();
 		__ReentrancyGuard_init();
 		__EIP712_init(_name, _version);
-
 		_setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
 
 		LacToken = IERC20Upgradeable(_lacAddress);
 
-		startTime = block.timestamp;
-		currentReleaseRatePerWeek = _initialReleaseRatePerWeek;
+		currentReleaseRatePerPeriod = _initialReleaseRatePerPeriod;
 
-		// calculate per block release rate ex. 300000 / ( 1 week / 3). considering 3 secs as binance block time
-		currentReleaseRatePerBlock = currentReleaseRatePerWeek / (1 weeks / 3);
+		// calculate per block release rate ex. blockTime00000 / ( 1 week / blockTime). considering blockTime secs as binance block time
+		currentReleaseRatePerBlock = currentReleaseRatePerPeriod / (1 weeks / blockTime);
 
-		maxReleaseRatePerWeek = _maxReleaseRatePerWeek;
+		maxReleaseRatePerPeriod = _maxReleaseRatePerPeriod;
 		increasePercentage = _increasePercent;
-		increaseRateAfterWeeks = _increaseRateAfterWeek;
+		increaseRateAfterPeriods = _increaseRateAfterPeriod;
+		startTime = block.timestamp;
 		lastFundUpdatedTimestamp = block.timestamp;
+		blockTime = 3;
+		shareMultiplier = 1e12;
 	}
+
+	/*
+   =======================================================================
+   ======================== Events ====================================
+   =======================================================================
+ 	*/
+	event Claimed(address account, address receiver, uint256 amount, uint256 timestamp);
 
 	/*
    =======================================================================
@@ -103,11 +107,6 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 
 	modifier onlyAdmin() {
 		require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()), 'Vault: ONLY_ADMIN_CAN_CALL');
-		_;
-	}
-
-	modifier onlyOperator() {
-		require(hasRole(OPERATOR_ROLE, _msgSender()), 'Vault: ONLY_OPERATOR_CAN_CALL');
 		_;
 	}
 
@@ -127,7 +126,7 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 		uint256 _amount,
 		address _receiver,
 		bytes calldata _signature
-	) external {
+	) external virtual {
 		(bool isExists, ) = LacTokenUtils.isAddressExists(fundReceiversList, _receiver);
 		require(isExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
 
@@ -143,13 +142,17 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 		require(LacToken.transfer(msg.sender, _amount), 'Vault: TRANSFER_FAILED');
 
 		fundReceivers[_receiver].totalAccumulatedFunds -= _amount;
+
+		emit Claimed(msg.sender, _receiver, _amount, block.timestamp);
 	}
 
 	/**
 	 * @notice This method allows admin to add the allocator address to be able to claim/receive LAC tokens.
-	 * @param _account indicates the address to add.
+	 * @param _account indicates the address to add. 100 =1%
 	 */
 	function addFundReceiverAddress(address _account, uint256 _share) external virtual onlyAdmin {
+		updateAllocatedFunds();
+
 		LacTokenUtils.addAddressInList(fundReceiversList, _account);
 		fundReceivers[_account] = FundReceiver(_share, 0);
 		totalShares += _share;
@@ -160,6 +163,8 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 	 * @param _account indicates the address to remove.
 	 */
 	function removeFundReceiverAddress(address _account) external virtual onlyAdmin {
+		updateAllocatedFunds();
+
 		LacTokenUtils.removeAddressFromList(fundReceiversList, _account);
 
 		// update total shares
@@ -174,6 +179,8 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 	 * @param _newShare - indicates the new share for the fundReceiver. ex. 100 = 1%
 	 */
 	function updateReceiverShare(address _receiver, uint256 _newShare) external virtual onlyAdmin {
+		updateAllocatedFunds();
+
 		(bool isExists, ) = LacTokenUtils.isAddressExists(fundReceiversList, _receiver);
 		require(isExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
 		uint256 currentShare = fundReceivers[_receiver].lacShare;
@@ -189,23 +196,73 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 	}
 
 	/**
+	 * @notice This method allows admin to add new receiver by shrinking the share of existing receiver.
+	 * @param _existingReceiver - indicates the address of the existing fundReceiver whose share will allocated to new receiver
+	 * @param _newReceiver - indicates the address of the new fundReceiver.
+	 * @param _newShare - indicates the new share for the fundReceiver. ex. 100 = 1%
+	 */
+	function shrinkReceiver(
+		address _existingReceiver,
+		address _newReceiver,
+		uint256 _newShare
+	) external virtual onlyAdmin {
+		updateAllocatedFunds();
+
+		(bool isExists, ) = LacTokenUtils.isAddressExists(fundReceiversList, _existingReceiver);
+		require(isExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
+		uint256 currentShare = fundReceivers[_existingReceiver].lacShare;
+		require(_newShare < currentShare, 'Vault: INVALID_SHARE');
+
+		fundReceivers[_existingReceiver].lacShare = currentShare - _newShare;
+		fundReceivers[_newReceiver].lacShare = _newShare;
+	}
+
+	/**
 	 * @notice This method updates the totalAllocated funds for each receiver
 	 */
-	function updateAllocatedFunds() public {
-		if (getMultiplier() > 0) {
-			// update totalAllocated funds for all fundReceivers
-			for (uint256 i = 0; i < fundReceiversList.length; i++) {
-				fundReceivers[fundReceiversList[i]].totalAccumulatedFunds += _getAccumulatedFunds(
-					fundReceiversList[i]
-				);
-			}
+	function updateAllocatedFunds() public virtual {
+		// update totalAllocated funds for all fundReceivers
+		for (uint256 i = 0; i < fundReceiversList.length; i++) {
+			uint256 funds = _getAccumulatedFunds(fundReceiversList[i]);
 
-			if (_isWeeksCompleted()) {
+			fundReceivers[fundReceiversList[i]].totalAccumulatedFunds += funds;
+		}
+
+		if (_isPeriodCompleted() && currentReleaseRatePerPeriod != maxReleaseRatePerPeriod) {
+			uint256 periodEndTime = startTime + increaseRateAfterPeriods;
+
+			// calculate number of periods before last update happened
+			uint256 totalPeriodsCompleted = (block.timestamp - (periodEndTime)) /
+				increaseRateAfterPeriods;
+
+			for (uint256 i = 0; i < totalPeriodsCompleted; i++) {
 				_updateReleaseRate();
 			}
 
-			lastFundUpdatedTimestamp = block.timestamp;
+			_updateReleaseRate();
 		}
+
+		lastFundUpdatedTimestamp = block.timestamp;
+	}
+
+	function updateMaxReleaseRatePerPeriod(uint256 _maxReleaseRate) external virtual onlyAdmin {
+		require(_maxReleaseRate != maxReleaseRatePerPeriod, 'Vault: ALREADY_SET');
+		maxReleaseRatePerPeriod = _maxReleaseRate;
+	}
+
+	function updateIncreasePercentage(uint256 _newPercentage) external virtual onlyAdmin {
+		require(_newPercentage != increasePercentage, 'Vault: ALREADY_SET');
+		increasePercentage = _newPercentage;
+	}
+
+	function updateIncreaseRateAfterPeriod(uint256 _newPeriods) external virtual onlyAdmin {
+		require(_newPeriods != increaseRateAfterPeriods, 'Vault: ALREADY_SET');
+		increaseRateAfterPeriods = _newPeriods;
+	}
+
+	function updateBlockTime(uint256 _newBlockTime) external virtual onlyAdmin {
+		require(_newBlockTime != blockTime, 'Vault: ALREADY_SET');
+		blockTime = _newBlockTime;
 	}
 
 	/*
@@ -224,7 +281,7 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 	 * This method returns the share of specified fund receiver
 	 */
 	function getFundReceiverShare(address _receiver) public view virtual returns (uint256) {
-		return fundReceivers[_receiver].lacShare / totalShares;
+		return (fundReceivers[_receiver].lacShare * shareMultiplier) / totalShares;
 	}
 
 	/**
@@ -233,32 +290,34 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 	function _getAccumulatedFunds(address _receiver)
 		internal
 		view
-		virtual
 		returns (uint256 accumulatedFunds)
 	{
-		if (_isWeeksCompleted()) {
+		if (_isPeriodCompleted()) {
 			uint256 totalBlocks;
-			uint256 weekEndTime = startTime + increaseRateAfterWeeks;
+			uint256 periodEndTime = startTime + increaseRateAfterPeriods;
 
-			// calculate number of weeks before last update happened
-			uint256 totalWeeksCompleted = (block.timestamp - (weekEndTime)) / increaseRateAfterWeeks;
+			// calculate number of periods before last update happened
+			uint256 totalPeriodsCompleted = (block.timestamp - (periodEndTime)) /
+				increaseRateAfterPeriods;
 
-			if (totalWeeksCompleted > 0) {
-				totalBlocks = (totalWeeksCompleted * 1 weeks) / 3;
+			if (totalPeriodsCompleted > 0) {
+				totalBlocks = (totalPeriodsCompleted * 1 weeks) / blockTime;
 			} else {
-				// total blocks passed in the current week
-				totalBlocks = (block.timestamp - (weekEndTime)) / 3;
+				// total blocks passed in the current period
+				totalBlocks = (block.timestamp - (periodEndTime)) / blockTime;
 
-				// todo - get total blocks before weeks completed i.e weeksLastTimestamp - lastupdated timestamp
-				totalBlocks += ((weekEndTime) - lastFundUpdatedTimestamp) / 3;
+				// get total blocks before periods completed i.e periodsLastTimestamp - lastupdated timestamp
+				totalBlocks += ((periodEndTime) - lastFundUpdatedTimestamp) / blockTime;
 
 				if (totalBlocks > 0) {
 					accumulatedFunds =
 						currentReleaseRatePerBlock *
 						totalBlocks *
-						getFundReceiverShare(_receiver);
+						(getFundReceiverShare(_receiver) / shareMultiplier);
 				} else {
-					accumulatedFunds = currentReleaseRatePerBlock * getFundReceiverShare(_receiver);
+					accumulatedFunds =
+						currentReleaseRatePerBlock *
+						(getFundReceiverShare(_receiver) / shareMultiplier);
 				}
 			}
 		} else {
@@ -268,9 +327,11 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 				accumulatedFunds =
 					currentReleaseRatePerBlock *
 					multiplier *
-					getFundReceiverShare(_receiver);
+					(getFundReceiverShare(_receiver) / shareMultiplier);
 			} else {
-				accumulatedFunds = currentReleaseRatePerBlock * getFundReceiverShare(_receiver);
+				accumulatedFunds =
+					currentReleaseRatePerBlock *
+					(getFundReceiverShare(_receiver) / shareMultiplier);
 			}
 		}
 	}
@@ -278,8 +339,8 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 	/**
 	 * This method returns the multiplier
 	 */
-	function getMultiplier() public view virtual returns (uint256) {
-		return (block.timestamp - lastFundUpdatedTimestamp) / 3;
+	function getMultiplier() public view returns (uint256) {
+		return (block.timestamp - lastFundUpdatedTimestamp) / blockTime;
 	}
 
 	/*
@@ -287,27 +348,27 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
    ======================== Internal Methods =============================
    =======================================================================
  	*/
-	function _isWeeksCompleted() internal view returns (bool) {
-		if (block.timestamp > (startTime + increaseRateAfterWeeks)) return true;
+	function _isPeriodCompleted() internal view returns (bool) {
+		if (block.timestamp > (startTime + increaseRateAfterPeriods)) return true;
 		return false;
 	}
 
 	function _updateReleaseRate() internal {
 		// calculate amount to increase by
-		uint256 increaseAmount = currentReleaseRatePerWeek * (increasePercentage / 100);
+		uint256 increaseAmount = currentReleaseRatePerPeriod * (increasePercentage / 10000);
 
-		if ((currentReleaseRatePerWeek + increaseAmount) > maxReleaseRatePerWeek) {
-			// set per week release rate to max release rate in case current release rate exceeds max release rate
-			currentReleaseRatePerWeek = maxReleaseRatePerWeek;
+		if ((currentReleaseRatePerPeriod + increaseAmount) > maxReleaseRatePerPeriod) {
+			// set per period release rate to max release rate in case current release rate exceeds max release rate
+			currentReleaseRatePerPeriod = maxReleaseRatePerPeriod;
 		} else {
-			currentReleaseRatePerWeek += increaseAmount;
+			currentReleaseRatePerPeriod += increaseAmount;
 		}
 
 		// update per block release rate
-		currentReleaseRatePerBlock = currentReleaseRatePerWeek / (1 weeks / 3);
+		currentReleaseRatePerBlock = currentReleaseRatePerPeriod / (1 weeks / blockTime);
 
 		// update start time
-		startTime = block.timestamp;
+		startTime = startTime + increaseRateAfterPeriods;
 	}
 
 	function _hash(uint256 _amount, address _receiver) internal view returns (bytes32) {
@@ -315,7 +376,7 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 			_hashTypedDataV4(
 				keccak256(
 					abi.encode(
-						keccak256('claim(address user,uint256 amount,address receiver)'),
+						keccak256('Claim(address account,uint256 amount,address receiver)'),
 						msg.sender,
 						_amount,
 						_receiver

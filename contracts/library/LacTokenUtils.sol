@@ -3,13 +3,12 @@
 pragma solidity ^0.8.0;
 
 library LacTokenUtils {
-
 	/**
-	 * @notice This method allows admin to except the addresses to have multiple tokens of same NFT.
+	 * @notice This method allows admin to add the receiver addresses.
 	 * @param _address indicates the address to add.
 	 */
 	function addAddressInList(address[] storage _list, address _address) internal {
-		require(_address != address(0), 'LacTokenUtils: CANNOT_EXCEPT_ZERO_ADDRESS');
+		require(_address != address(0), 'LacTokenUtils: CANNOT_ADD_ZERO_ADDRESS');
 
 		(bool isExists, ) = isAddressExists(_list, _address);
 		require(!isExists, 'LacTokenUtils: ADDRESS_ALREADY_EXISTS');
@@ -18,7 +17,7 @@ library LacTokenUtils {
 	}
 
 	/**
-	 * @notice This method allows user to remove the particular address from the address list
+	 * @notice This method allows user to remove the receiver address from the address list
 	 */
 	function removeAddressFromList(address[] storage _list, address _item) internal {
 		uint256 listItems = _list.length;
