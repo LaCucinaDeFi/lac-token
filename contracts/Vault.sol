@@ -8,16 +8,17 @@ import '@openzeppelin/contracts-upgradeable/utils/cryptography/draft-EIP712Upgra
 import '@openzeppelin/contracts-upgradeable/utils/cryptography/ECDSAUpgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol';
 
-import './library/LaCucinaUtils.sol';
+import './library/LacTokenUtils.sol';
 
 contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUpgradeable {
 	using CountersUpgradeable for CountersUpgradeable.Counter;
 
 	/*
-   	=======================================================================
-   	======================== Structures ===================================
-   	=======================================================================
-	*/
+   =======================================================================
+   ======================== Structures ===================================
+   =======================================================================
+ */
+
 	struct FundReceiver {
 		uint256 lacShare;
 		uint256 totalAccumulatedFunds;
@@ -27,19 +28,15 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
    ======================== Constants ====================================
    =======================================================================
  */
-	bytes32 public constant OPERATOR_ROLE = keccak256('OPERATOR_ROLE');
 
-	/*
-   =======================================================================
-   ======================== Private Variables ============================
-   =======================================================================
- */
+	bytes32 public constant OPERATOR_ROLE = keccak256('OPERATOR_ROLE');
 
 	/*
    =======================================================================
    ======================== Public Variables ============================
    =======================================================================
  */
+
 	IERC20Upgradeable public LacToken;
 
 	uint256 public totalShares;
@@ -59,9 +56,9 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 	mapping(address => FundReceiver) public fundReceivers;
 
 	/*
-   	=======================================================================
-   	======================== Constructor/Initializer ======================
-   	=======================================================================
+   =======================================================================
+   ======================== Constructor/Initializer ======================
+   =======================================================================
  	*/
 
 	/**
@@ -99,9 +96,9 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 	}
 
 	/*
-   	=======================================================================
-   	======================== Modifiers ====================================
-   	=======================================================================
+   =======================================================================
+   ======================== Modifiers ====================================
+   =======================================================================
  	*/
 
 	modifier onlyAdmin() {
@@ -115,9 +112,9 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 	}
 
 	/*
-  	=======================================================================
-   	======================== Public Methods ===============================
-   	=======================================================================
+   =======================================================================
+   ======================== Public Methods ===============================
+   =======================================================================
  	*/
 
 	/**
@@ -131,7 +128,7 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 		address _receiver,
 		bytes calldata _signature
 	) external {
-		(bool isExists, ) = LaCucinaUtils.isAddressExists(fundReceiversList, _receiver);
+		(bool isExists, ) = LacTokenUtils.isAddressExists(fundReceiversList, _receiver);
 		require(isExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
 
 		// update allocated funds
@@ -153,7 +150,7 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 	 * @param _account indicates the address to add.
 	 */
 	function addFundReceiverAddress(address _account, uint256 _share) external virtual onlyAdmin {
-		LaCucinaUtils.addAddressInList(fundReceiversList, _account);
+		LacTokenUtils.addAddressInList(fundReceiversList, _account);
 		fundReceivers[_account] = FundReceiver(_share, 0);
 		totalShares += _share;
 	}
@@ -163,7 +160,7 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 	 * @param _account indicates the address to remove.
 	 */
 	function removeFundReceiverAddress(address _account) external virtual onlyAdmin {
-		LaCucinaUtils.removeAddressFromList(fundReceiversList, _account);
+		LacTokenUtils.removeAddressFromList(fundReceiversList, _account);
 
 		// update total shares
 		totalShares -= fundReceivers[_account].lacShare;
@@ -177,7 +174,7 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 	 * @param _newShare - indicates the new share for the fundReceiver. ex. 100 = 1%
 	 */
 	function updateReceiverShare(address _receiver, uint256 _newShare) external virtual onlyAdmin {
-		(bool isExists, ) = LaCucinaUtils.isAddressExists(fundReceiversList, _receiver);
+		(bool isExists, ) = LacTokenUtils.isAddressExists(fundReceiversList, _receiver);
 		require(isExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
 		uint256 currentShare = fundReceivers[_receiver].lacShare;
 		require(currentShare != _newShare, 'Vault: INVALID_SHARE');
@@ -212,9 +209,9 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 	}
 
 	/*
-  	=======================================================================
-   	======================== Getter Methods ===============================
-   	=======================================================================
+   =======================================================================
+   ======================== Getter Methods ===============================
+   =======================================================================
  	*/
 	/**
 	 * This method returns the total number of fundReceivers available in vault
@@ -286,9 +283,9 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 	}
 
 	/*
-   	=======================================================================
-   	======================== Internal Methods ===============================
-   	=======================================================================
+   =======================================================================
+   ======================== Internal Methods =============================
+   =======================================================================
  	*/
 	function _isWeeksCompleted() internal view returns (bool) {
 		if (block.timestamp > (startTime + increaseRateAfterWeeks)) return true;

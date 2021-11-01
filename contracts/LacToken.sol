@@ -1,30 +1,27 @@
 pragma solidity ^0.8.0;
 
-import '@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol';
+import '@openzeppelin/contracts/token/ERC20/ERC20.sol';
+import '@openzeppelin/contracts/access/AccessControl.sol';
 
-contract LacToken is ERC20Upgradeable, AccessControlUpgradeable, ReentrancyGuardUpgradeable {
+contract LacToken is ERC20, AccessControl {
 	/*
-   	=======================================================================
-   	======================== Constructor/Initializer ======================
-   	=======================================================================
+   =======================================================================
+   ======================== Constructor/Initializer ======================
+   =======================================================================
  	*/
-
 	/**
-	 * @notice Used in place of the constructor to allow the contract to be upgradable via proxy.
+	 * @param  _name - name of the token
+	 * @param _symbol - symbol of token
+	 * @param _preMintAddress - account address to whoch tokens will be preminted
+	 * @param _preMintAmount - indicates the amount of tokens to pre-mint
 	 */
-	function initialize(
+	constructor(
 		string memory _name,
 		string memory _symbol,
 		address _preMintAddress,
 		uint256 _preMintAmount
-	) external virtual initializer {
+	) ERC20(_name, _symbol) {
 		require(_preMintAmount > 0, 'LacToken: INVALID_PREMINT_AMOUNT');
-
-		__AccessControl_init();
-		__ReentrancyGuard_init();
-		__ERC20_init(_name, _symbol);
 
 		_setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
 
