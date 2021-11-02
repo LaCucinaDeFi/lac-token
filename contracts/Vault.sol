@@ -77,6 +77,8 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 		_setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
 
 		LacToken = IERC20Upgradeable(_lacAddress);
+		blockTime = 3;
+		shareMultiplier = 1e12;
 
 		currentReleaseRatePerPeriod = _initialReleaseRatePerPeriod;
 
@@ -88,8 +90,6 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 		increaseRateAfterPeriods = _increaseRateAfterPeriod;
 		startTime = block.timestamp;
 		lastFundUpdatedTimestamp = block.timestamp;
-		blockTime = 3;
-		shareMultiplier = 1e12;
 	}
 
 	/*
@@ -126,7 +126,7 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 		uint256 _amount,
 		address _receiver,
 		bytes calldata _signature
-	) external virtual {
+	) external virtual nonReentrant {
 		(bool isExists, ) = LacTokenUtils.isAddressExists(fundReceiversList, _receiver);
 		require(isExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
 
@@ -182,17 +182,14 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 		updateAllocatedFunds();
 
 		(bool isExists, ) = LacTokenUtils.isAddressExists(fundReceiversList, _receiver);
+
 		require(isExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
 		uint256 currentShare = fundReceivers[_receiver].lacShare;
-		require(currentShare != _newShare, 'Vault: INVALID_SHARE');
 
-		if (_newShare > currentShare) {
-			totalShares = (totalShares - fundReceivers[_receiver].lacShare) + _newShare;
-			fundReceivers[_receiver].lacShare = _newShare;
-		} else {
-			totalShares = (totalShares - fundReceivers[_receiver].lacShare) - _newShare;
-			fundReceivers[_receiver].lacShare = _newShare;
-		}
+		require(currentShare != _newShare && _newShare > 0, 'Vault: INVALID_SHARE');
+
+		totalShares = (totalShares - fundReceivers[_receiver].lacShare) + _newShare;
+		fundReceivers[_receiver].lacShare = _newShare;
 	}
 
 	/**
@@ -207,11 +204,12 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 		uint256 _newShare
 	) external virtual onlyAdmin {
 		updateAllocatedFunds();
+		(bool isReceiverExists, ) = LacTokenUtils.isAddressExists(fundReceiversList, _existingReceiver);
+		require(isReceiverExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
 
-		(bool isExists, ) = LacTokenUtils.isAddressExists(fundReceiversList, _existingReceiver);
-		require(isExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
 		uint256 currentShare = fundReceivers[_existingReceiver].lacShare;
-		require(_newShare < currentShare, 'Vault: INVALID_SHARE');
+		require(_newShare < currentShare && _newShare > 0, 'Vault: INVALID_SHARE');
+		LacTokenUtils.addAddressInList(fundReceiversList, _newReceiver);
 
 		fundReceivers[_existingReceiver].lacShare = currentShare - _newShare;
 		fundReceivers[_newReceiver].lacShare = _newShare;
@@ -223,7 +221,7 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 	function updateAllocatedFunds() public virtual {
 		// update totalAllocated funds for all fundReceivers
 		for (uint256 i = 0; i < fundReceiversList.length; i++) {
-			uint256 funds = _getAccumulatedFunds(fundReceiversList[i]);
+			uint256 funds = getPendingAccumulatedFunds(fundReceiversList[i]);
 
 			fundReceivers[fundReceiversList[i]].totalAccumulatedFunds += funds;
 		}
@@ -265,6 +263,35 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 		blockTime = _newBlockTime;
 	}
 
+	/**
+	 * @notice This method allows admin to claim all the tokens of specified address to given address
+	 */
+	function claimAllTokens(address _user, address _tokenAddress) external onlyAdmin {
+		require(_user != address(0), 'Vault: INVALID_USER_ADDRESS');
+		require(_tokenAddress != address(0), 'Vault: INVALID_TOKEN_ADDRESS');
+
+		uint256 tokenAmount = IERC20Upgradeable(_tokenAddress).balanceOf(address(this));
+
+		require(IERC20Upgradeable(_tokenAddress).transfer(_user, tokenAmount));
+	}
+
+	/**
+	 * @notice This method allows admin to transfer specified amount of the tokens of specified address to given address
+	 */
+	function claimTokens(
+		address _user,
+		address _tokenAddress,
+		uint256 _amount
+	) external onlyAdmin {
+		require(_user != address(0), 'Vault: INVALID_USER_ADDRESS');
+		require(_tokenAddress != address(0), 'Vault: INVALID_TOKEN_ADDRESS');
+
+		uint256 tokenAmount = IERC20Upgradeable(_tokenAddress).balanceOf(address(this));
+		require(_amount > 0 && tokenAmount >= _amount, 'Vault: INSUFFICIENT_BALANCE');
+
+		require(IERC20Upgradeable(_tokenAddress).transfer(_user, _amount));
+	}
+
 	/*
    =======================================================================
    ======================== Getter Methods ===============================
@@ -287,8 +314,8 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 	/**
 	 * This method returns fundReceiver`s accumulated funds
 	 */
-	function _getAccumulatedFunds(address _receiver)
-		internal
+	function getPendingAccumulatedFunds(address _receiver)
+		public
 		view
 		returns (uint256 accumulatedFunds)
 	{
@@ -311,13 +338,12 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 
 				if (totalBlocks > 0) {
 					accumulatedFunds =
-						currentReleaseRatePerBlock *
-						totalBlocks *
-						(getFundReceiverShare(_receiver) / shareMultiplier);
+						(currentReleaseRatePerBlock * totalBlocks * getFundReceiverShare(_receiver)) /
+						shareMultiplier;
 				} else {
 					accumulatedFunds =
-						currentReleaseRatePerBlock *
-						(getFundReceiverShare(_receiver) / shareMultiplier);
+						(currentReleaseRatePerBlock * getFundReceiverShare(_receiver)) /
+						shareMultiplier;
 				}
 			}
 		} else {
@@ -325,13 +351,12 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 
 			if (multiplier > 0) {
 				accumulatedFunds =
-					currentReleaseRatePerBlock *
-					multiplier *
-					(getFundReceiverShare(_receiver) / shareMultiplier);
+					(currentReleaseRatePerBlock * multiplier * getFundReceiverShare(_receiver)) /
+					shareMultiplier;
 			} else {
 				accumulatedFunds =
-					currentReleaseRatePerBlock *
-					(getFundReceiverShare(_receiver) / shareMultiplier);
+					(currentReleaseRatePerBlock * getFundReceiverShare(_receiver)) /
+					shareMultiplier;
 			}
 		}
 	}
