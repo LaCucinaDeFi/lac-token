@@ -29,12 +29,14 @@
 		"@openzeppelin/truffle-upgrades": "^1.10.0",
 		"@truffle/hdwallet-provider": "^1.5.1",
 		"child_process": "^1.0.2",
+		"eth-sig-util": "^3.0.1",
 		"fs": "^0.0.1-security",
 		"ganache-cli": "^6.12.2",
 		"lcov2badge": "^0.1.2",
 		"path": "^0.12.7",
 		"solidity-coverage": "^0.7.17",
 		"truffle-contract-size": "^2.0.1",
-		"truffle-plugin-verify": "^0.5.15"
+		"truffle-plugin-verify": "^0.5.15",
+		"web3": "^1.6.0"
 	}
 }

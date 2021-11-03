@@ -1,12 +1,19 @@
 require('chai').should();
 
+const Web3 = require('web3');
 const {expect} = require('chai');
 const {expectRevert, BN, ether, time} = require('@openzeppelin/test-helpers');
 const {deployProxy, upgradeProxy} = require('@openzeppelin/truffle-upgrades');
 const {ZERO_ADDRESS} = require('@openzeppelin/test-helpers/src/constants');
+const {PRIVATE_KEY} = require('../secrets.json');
+const {signTypedData_v4} = require('eth-sig-util');
 
 const LacToken = artifacts.require('LacToken');
 const Vault = artifacts.require('Vault');
+const BlockData = artifacts.require('BlockData');
+
+const name = 'Vault';
+const version = '1.0.0';
 
 function getAccumulatedAmount(pending, perBlockAmount, receiverShare, totalShare, totalBlocks) {
 	return pending.add(perBlockAmount.mul(totalBlocks).mul(receiverShare).div(totalShare));
@@ -15,6 +22,7 @@ function getAccumulatedAmount(pending, perBlockAmount, receiverShare, totalShare
 function getReceiverShare(perBlockAmount, receiverShare, totalShare, totalBlocks) {
 	return perBlockAmount.mul(totalBlocks).mul(receiverShare).div(totalShare);
 }
+
 async function createSignature(
 	pk,
 	userAddress,
@@ -78,6 +86,15 @@ contract('Vault', (accounts) => {
 			500, // 5%
 			time.duration.weeks(1) // 1 weeks
 		]);
+
+		this.web3 = new Web3(new Web3.providers.HttpProvider('http://localhost:8555'));
+
+		// add account
+		await this.web3.eth.accounts.wallet.add('0x' + PRIVATE_KEY);
+		this.pk = Buffer.from(PRIVATE_KEY, 'hex');
+
+		this.BlockData = await BlockData.new();
+		this.chainId = await this.BlockData.getChainId();
 	});
 
 	describe('initialize()', () => {
@@ -445,6 +462,215 @@ contract('Vault', (accounts) => {
 		});
 	});
 
+	describe('claim()', () => {
+		before(async () => {
+			const OPERATOR_ROLE = await this.Vault.OPERATOR_ROLE();
+			await this.Vault.grantRole(OPERATOR_ROLE, receiver1);
+			await this.Vault.grantRole(OPERATOR_ROLE, receiver2);
+			await this.Vault.grantRole(OPERATOR_ROLE, receiver3);
+
+			await this.Vault.grantRole(OPERATOR_ROLE, '0x0055f67515c252860fe9b27f6903d44fcfc3a727');
+		});
+
+		it('should allow user to claim', async () => {
+			const receiver1Details = await this.Vault.fundReceivers(receiver1);
+
+			// transfer lac tokens to Vault
+			await this.LacToken.transfer(this.Vault.address, receiver1Details.totalAccumulatedFunds, {
+				from: minter
+			});
+
+			signature = await createSignature(
+				this.pk,
+				user1,
+				receiver1Details.totalAccumulatedFunds,
+				receiver1,
+				this.Vault.address,
+				this.chainId
+			);
+
+			const user1Bal = await this.LacToken.balanceOf(user1);
+
+			//claim tokens
+			await this.Vault.claim(receiver1Details.totalAccumulatedFunds, receiver1, signature, {
+				from: user1
+			});
+
+			const receiver1Share = getReceiverShare(
+				currentPerBlockAmount,
+				new BN('8000'),
+				new BN('10000'),
+				new BN('1')
+			);
+
+			console.log('receiver1Share: ', receiver1Share.toString());
+
+			const user1BalAfter = await this.LacToken.balanceOf(user1);
+			const receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
+
+			expect(user1Bal).to.bignumber.be.eq(new BN('0'));
+			expect(user1BalAfter).to.bignumber.be.eq(receiver1Details.totalAccumulatedFunds);
+			expect(receiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(receiver1Share);
+		});
+
+		it('should revert when user tries to claim more amount that receiver accumulated', async () => {
+			// update allocated funds
+			await this.Vault.updateAllocatedFunds();
+
+			// transfer lac tokens to Vault
+			await this.LacToken.transfer(this.Vault.address, ether('50000000'), {
+				from: minter
+			});
+
+			//stash user1 lac tokens
+			await this.LacToken.transfer(accounts[9], await this.LacToken.balanceOf(user1), {
+				from: user1
+			});
+
+			signature = await createSignature(
+				this.pk,
+				user1,
+				ether('5'),
+				receiver1,
+				this.Vault.address,
+				this.chainId
+			);
+
+			//claim tokens
+			await expectRevert(
+				this.Vault.claim(ether('5'), receiver1, signature, {
+					from: user1
+				}),
+				'Vault: INSUFFICIENT_AMOUNT'
+			);
+		});
+
+		it('should revert when user tries to claim zero tokens', async () => {
+			signature = await createSignature(
+				this.pk,
+				user1,
+				ether('0'),
+				receiver1,
+				this.Vault.address,
+				this.chainId
+			);
+
+			//claim tokens
+			await expectRevert(
+				this.Vault.claim(ether('0'), receiver1, signature, {
+					from: user1
+				}),
+				'Vault: INSUFFICIENT_AMOUNT'
+			);
+		});
+
+		it('should revert when user tries to claim tokens from invalid receiver', async () => {
+			signature = await createSignature(
+				this.pk,
+				user1,
+				ether('1'),
+				user2,
+				this.Vault.address,
+				this.chainId
+			);
+
+			//claim tokens
+			await expectRevert(
+				this.Vault.claim(ether('1'), user2, signature, {
+					from: user1
+				}),
+				'Vault: RECEIVER_DOES_NOT_EXISTS'
+			);
+		});
+
+		it('should revert when param value mismatches with signature value', async () => {
+			signature = await createSignature(
+				this.pk,
+				user1,
+				ether('2'),
+				receiver1,
+				this.Vault.address,
+				this.chainId
+			);
+
+			//claim tokens
+			await expectRevert(
+				this.Vault.claim(ether('0.1'), receiver1, signature, {
+					from: user1
+				}),
+				'Vault: INVALID_SIGNATURE'
+			);
+
+			signature = await createSignature(
+				this.pk,
+				user2,
+				ether('0.1'),
+				receiver1,
+				this.Vault.address,
+				this.chainId
+			);
+
+			//claim tokens
+			await expectRevert(
+				this.Vault.claim(ether('0.1'), receiver1, signature, {
+					from: user1
+				}),
+				'Vault: INVALID_SIGNATURE'
+			);
+
+			signature = await createSignature(
+				this.pk,
+				user1,
+				ether('0.1'),
+				receiver2,
+				this.Vault.address,
+				this.chainId
+			);
+
+			//claim tokens
+			await expectRevert(
+				this.Vault.claim(ether('0.1'), receiver1, signature, {
+					from: user1
+				}),
+				'Vault: INVALID_SIGNATURE'
+			);
+
+			signature = await createSignature(
+				this.pk,
+				user1,
+				ether('0.1'),
+				receiver1,
+				this.BlockData.address,
+				this.chainId
+			);
+
+			//claim tokens
+			await expectRevert(
+				this.Vault.claim(ether('0.1'), receiver1, signature, {
+					from: user1
+				}),
+				'Vault: INVALID_SIGNATURE'
+			);
+
+			signature = await createSignature(
+				this.pk,
+				user1,
+				ether('0.1'),
+				receiver1,
+				this.Vault.address,
+				new BN('111')
+			);
+
+			//claim tokens
+			await expectRevert(
+				this.Vault.claim(ether('0.1'), receiver1, signature, {
+					from: user1
+				}),
+				'Vault: INVALID_SIGNATURE'
+			);
+		});
+	});
+
 	describe('updateAllocatedFunds()', () => {
 		let receiver1Pendings;
 		let receiver2Pendings;
@@ -525,6 +751,275 @@ contract('Vault', (accounts) => {
 			expect(
 				receiver1DetailsAfter.totalAccumulatedFunds.sub(receiver3Details.totalAccumulatedFunds)
 			).to.bignumber.be.eq(receiver3Pendings);
+		});
+
+		it('should increase the currentReleaseRatePerPeriod correctly once the period is completed', async () => {});
+
+		it('should increase the currentReleaseRatePerBlock correctly once the period is completed', async () => {});
+
+		it('should reach the maxReleaseRatePerWeek on time correctly', async () => {});
+
+		it('should reach the maxReleaseRatePerBlock on time correctly', async () => {});
+
+		it('should not increase the currentReleaseRatePerPeriod after maxReleaRatePerWeek reaches', async () => {});
+
+		it('should update the startime correctly after updating the release rate', async () => {});
+
+		it('should update the startime correctly after updating the release rate after 2 weeks', async () => {});
+	});
+
+	describe('updateMaxReleaseRatePerPeriod()', async () => {
+		it('should update the maxReleaseRatePerPeriod correctly', async () => {
+			const maxReleaseRatePerPeriod = await this.Vault.maxReleaseRatePerPeriod();
+
+			//update max release rate
+			await this.Vault.updateMaxReleaseRatePerPeriod(ether('20000000'), {from: owner});
+
+			const maxReleaseRatePerPeriodAfter = await this.Vault.maxReleaseRatePerPeriod();
+
+			expect(maxReleaseRatePerPeriod).to.bignumber.be.eq(ether('1000000'));
+			expect(maxReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('20000000'));
+		});
+
+		it('should revert when non-owner tries to update the release rate', async () => {
+			await expectRevert(
+				this.Vault.updateMaxReleaseRatePerPeriod(ether('2000000'), {from: user1}),
+				'Vault: ONLY_ADMIN_CAN_CALL'
+			);
+		});
+
+		it('should revert when owner tries to update the release rate with already set value', async () => {
+			await expectRevert(
+				this.Vault.updateMaxReleaseRatePerPeriod(ether('20000000'), {from: owner}),
+				'Vault: ALREADY_SET'
+			);
+		});
+	});
+
+	describe('updateIncreasePercentage()', async () => {
+		it('should update the updateIncreasePercentage correctly', async () => {
+			const increasePercentage = await this.Vault.increasePercentage();
+
+			//update increase percentage
+			await this.Vault.updateIncreasePercentage('700', {from: owner});
+
+			const increasePercentageAfter = await this.Vault.increasePercentage();
+
+			expect(increasePercentage).to.bignumber.be.eq(new BN('500'));
+			expect(increasePercentageAfter).to.bignumber.be.eq(new BN('700'));
+		});
+
+		it('should revert when non-owner tries to update the increase percentage', async () => {
+			await expectRevert(
+				this.Vault.updateIncreasePercentage('700', {from: user1}),
+				'Vault: ONLY_ADMIN_CAN_CALL'
+			);
+		});
+
+		it('should revert when owner tries to update the increase percentage with already set value', async () => {
+			await expectRevert(
+				this.Vault.updateIncreasePercentage('700', {from: owner}),
+				'Vault: ALREADY_SET'
+			);
+		});
+	});
+
+	describe('updateIncreaseRateAfterPeriod()', async () => {
+		it('should update the updateIncreaseRateAfterPeriod correctly', async () => {
+			const increaseRateAfterPeriods = await this.Vault.increaseRateAfterPeriods();
+
+			//update increase period duration
+			await this.Vault.updateIncreaseRateAfterPeriod(time.duration.weeks('4'), {from: owner});
+
+			const increaseRateAfterPeriodsAfter = await this.Vault.increaseRateAfterPeriods();
+
+			expect(increaseRateAfterPeriods).to.bignumber.be.eq(new BN(time.duration.weeks('1')));
+			expect(increaseRateAfterPeriodsAfter).to.bignumber.be.eq(new BN(time.duration.weeks('4')));
+		});
+
+		it('should revert when non-owner tries to update the increase period duration', async () => {
+			await expectRevert(
+				this.Vault.updateIncreaseRateAfterPeriod(time.duration.weeks('4'), {from: user1}),
+				'Vault: ONLY_ADMIN_CAN_CALL'
+			);
+		});
+
+		it('should revert when owner tries to update the increase period duration with already set value', async () => {
+			await expectRevert(
+				this.Vault.updateIncreaseRateAfterPeriod(time.duration.weeks('4'), {from: owner}),
+				'Vault: ALREADY_SET'
+			);
+		});
+	});
+
+	describe('updateBlockTime()', async () => {
+		it('should update the updateBlockTime correctly', async () => {
+			const blockTime = await this.Vault.blockTime();
+
+			//update block time
+			await this.Vault.updateBlockTime('2', {from: owner});
+
+			const blockTimeAfter = await this.Vault.blockTime();
+
+			expect(blockTime).to.bignumber.be.eq(new BN('3'));
+			expect(blockTimeAfter).to.bignumber.be.eq(new BN('2'));
+		});
+
+		it('should revert when non-owner tries to update the block time', async () => {
+			await expectRevert(
+				this.Vault.updateBlockTime('7', {from: user1}),
+				'Vault: ONLY_ADMIN_CAN_CALL'
+			);
+		});
+
+		it('should revert when owner tries to update the increase period duration with already set value', async () => {
+			await expectRevert(this.Vault.updateBlockTime('2', {from: owner}), 'Vault: ALREADY_SET');
+		});
+	});
+
+	describe('claimAllTokens()', () => {
+		it('should claim tokens send to vault contract', async () => {
+			//transfer tokens to Vault
+			await this.LacToken.transfer(this.Vault.address, ether('5'), {from: minter});
+
+			const vaultTokenBalBefore = await this.LacToken.balanceOf(this.Vault.address);
+			const owenerTokenBalBefore = await this.LacToken.balanceOf(owner);
+
+			// claim all tokens
+			await this.Vault.claimAllTokens(owner, this.LacToken.address, {from: owner});
+
+			const vaultTokenBalAfter = await this.LacToken.balanceOf(this.Vault.address);
+			const owenerTokenBalAfter = await this.LacToken.balanceOf(owner);
+
+			expect(vaultTokenBalBefore).to.bignumber.be.eq(ether('50000000').add(ether('5')));
+			expect(owenerTokenBalBefore).to.bignumber.be.eq(new BN('0'));
+
+			expect(vaultTokenBalAfter).to.bignumber.be.eq(new BN('0'));
+			expect(owenerTokenBalAfter).to.bignumber.be.eq(vaultTokenBalBefore);
+		});
+
+		it('should revert when non-admin tries to claim all the tokens', async () => {
+			await expectRevert(
+				this.Vault.claimAllTokens(owner, this.LacToken.address, {from: minter}),
+				'Vault: ONLY_ADMIN_CAN_CALL'
+			);
+		});
+
+		it('should revert when admin tries to claim all the tokens to zero user address', async () => {
+			await expectRevert(
+				this.Vault.claimAllTokens(ZERO_ADDRESS, this.LacToken.address, {from: owner}),
+				'Vault: INVALID_USER_ADDRESS'
+			);
+		});
+		it('should revert when admin tries to claim all the tokens to zero token address', async () => {
+			await expectRevert(
+				this.Vault.claimAllTokens(owner, ZERO_ADDRESS, {from: owner}),
+				'Vault: INVALID_TOKEN_ADDRESS'
+			);
+		});
+	});
+
+	describe('claimTokens()', () => {
+		it('should claim specified amount of tokens send to Vault contract', async () => {
+			//transfer tokens to Vault
+			await this.LacToken.transfer(this.Vault.address, ether('5'), {from: minter});
+
+			const vaultTokenBalBefore = await this.LacToken.balanceOf(this.Vault.address);
+			const minterTokenBalBefore = await this.LacToken.balanceOf(minter);
+
+			// claim all tokens
+			await this.Vault.claimTokens(minter, this.LacToken.address, ether('4'), {from: owner});
+
+			const vaultTokenBalAfter = await this.LacToken.balanceOf(this.Vault.address);
+			const minterTokenBalAfter = await this.LacToken.balanceOf(minter);
+
+			expect(vaultTokenBalBefore).to.bignumber.be.eq(ether('5'));
+
+			expect(vaultTokenBalAfter).to.bignumber.be.eq(ether('1'));
+			expect(minterTokenBalAfter).to.bignumber.be.eq(minterTokenBalBefore.add(ether('4')));
+		});
+
+		it('should revert when non-admin tries to claim given no. of the tokens', async () => {
+			await expectRevert(
+				this.Vault.claimTokens(owner, this.LacToken.address, ether('4'), {from: minter}),
+				'Vault: ONLY_ADMIN_CAN_CALL'
+			);
+		});
+		it('should revert when admin tries to claim  given no. of the tokens to zero user address', async () => {
+			await expectRevert(
+				this.Vault.claimTokens(ZERO_ADDRESS, this.LacToken.address, ether('4'), {from: owner}),
+				'Vault: INVALID_USER_ADDRESS'
+			);
+		});
+		it('should revert when admin tries to claim  given no. of the tokens to zero token address', async () => {
+			await expectRevert(
+				this.Vault.claimTokens(owner, ZERO_ADDRESS, ether('4'), {from: owner}),
+				'Vault: INVALID_TOKEN_ADDRESS'
+			);
+		});
+
+		it('should revert when admin tries to claim invalid amount of tokens', async () => {
+			await expectRevert(
+				this.Vault.claimTokens(owner, this.LacToken.address, ether('0'), {from: owner}),
+				'Vault: INSUFFICIENT_BALANCE'
+			);
+			await expectRevert(
+				this.Vault.claimTokens(owner, this.LacToken.address, ether('2'), {from: owner}),
+				'Vault: INSUFFICIENT_BALANCE'
+			);
+		});
+	});
+
+	describe('getTotalFundReceivers()', () => {
+		it('should return total fund receivers correctly', async () => {
+			const totalReceivers = await this.Vault.getTotalFundReceivers();
+			expect(totalReceivers).to.bignumber.be.eq(new BN('3'));
+		});
+	});
+
+	describe('getFundReceiverShare()', () => {
+		it('should return fund receivers share correctly', async () => {
+			const receiver1Share = await this.Vault.getFundReceiverShare(receiver1);
+			const receiver2Share = await this.Vault.getFundReceiverShare(receiver2);
+			const receiver3Share = await this.Vault.getFundReceiverShare(receiver3);
+			expect(receiver1Share).to.bignumber.be.eq(new BN('800000000000'));
+			expect(receiver2Share).to.bignumber.be.eq(new BN('100000000000'));
+			expect(receiver3Share).to.bignumber.be.eq(new BN('100000000000'));
+		});
+	});
+
+	describe('getPendingAccumulatedFunds()', () => {
+		it('should get the pending accumulated funds correctly', async () => {
+			//update allocated funds
+			await this.Vault.updateAllocatedFunds();
+
+			//get pending accumulated funds
+			const pendingFunds1 = await this.Vault.getPendingAccumulatedFunds(receiver1);
+			const pendingFunds2 = await this.Vault.getPendingAccumulatedFunds(receiver2);
+			const pendingFunds3 = await this.Vault.getPendingAccumulatedFunds(receiver3);
+
+			expect(pendingFunds1).to.bignumber.be.eq(new BN('396825396825396824'));
+			expect(pendingFunds2).to.bignumber.be.eq(new BN('49603174603174603'));
+			expect(pendingFunds3).to.bignumber.be.eq(new BN('49603174603174603'));
+		});
+	});
+
+	describe('getMultiplier()', async () => {
+		it('should get the multiplier correctly', async () => {
+			const multiplier = await this.Vault.getMultiplier();
+			const lastFundUpdatedTimestamp = await this.Vault.lastFundUpdatedTimestamp();
+
+			// increase time by 6 seconds
+			await time.increase(time.duration.seconds('6'));
+
+			const currentTime = await time.latest();
+
+			const multiplierAfter = await this.Vault.getMultiplier();
+
+			expect(multiplier).to.bignumber.be.eq(new BN('0'));
+			expect(multiplierAfter).to.bignumber.be.eq(
+				currentTime.sub(lastFundUpdatedTimestamp).div(new BN('2'))
+			);
 		});
 	});
 });

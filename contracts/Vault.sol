@@ -8,8 +8,14 @@ import '@openzeppelin/contracts-upgradeable/utils/cryptography/ECDSAUpgradeable.
 import '@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol';
 
 import './library/LacTokenUtils.sol';
+import './interfaces/IVersionedContract.sol';
 
-contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUpgradeable {
+contract Vault is
+	EIP712Upgradeable,
+	AccessControlUpgradeable,
+	ReentrancyGuardUpgradeable,
+	IVersionedContract
+{
 	/*
    =======================================================================
    ======================== Structures ===================================
@@ -366,6 +372,24 @@ contract Vault is EIP712Upgradeable, AccessControlUpgradeable, ReentrancyGuardUp
 	 */
 	function getMultiplier() public view returns (uint256) {
 		return (block.timestamp - lastFundUpdatedTimestamp) / blockTime;
+	}
+
+	/**
+	 * @notice Returns the storage, major, minor, and patch version of the contract.
+	 * @return The storage, major, minor, and patch version of the contract.
+	 */
+	function getVersionNumber()
+		external
+		pure
+		virtual
+		override
+		returns (
+			uint256,
+			uint256,
+			uint256
+		)
+	{
+		return (1, 0, 0);
 	}
 
 	/*
