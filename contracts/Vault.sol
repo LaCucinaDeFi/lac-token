@@ -88,7 +88,7 @@ contract Vault is
 
 		currentReleaseRatePerPeriod = _initialReleaseRatePerPeriod;
 
-		// calculate per block release rate ex. blockTime00000 / ( 1 week / blockTime). considering blockTime secs as binance block time
+		// calculate per block release rate ex. currentReleaseRatePerPeriod / ( 1 week / blockTime). considering blockTime secs as binance block time
 		currentReleaseRatePerBlock = currentReleaseRatePerPeriod / (1 weeks / blockTime);
 
 		maxReleaseRatePerPeriod = _maxReleaseRatePerPeriod;
@@ -239,13 +239,15 @@ contract Vault is
 			uint256 totalPeriodsCompleted = (block.timestamp - (periodEndTime)) /
 				increaseRateAfterPeriods;
 
+			_updateReleaseRate();
+
 			for (uint256 i = 0; i < totalPeriodsCompleted; i++) {
+				if (currentReleaseRatePerPeriod == maxReleaseRatePerPeriod) {
+					break;
+				}
 				_updateReleaseRate();
 			}
-
-			_updateReleaseRate();
 		}
-
 		lastFundUpdatedTimestamp = block.timestamp;
 	}
 
@@ -397,14 +399,17 @@ contract Vault is
    ======================== Internal Methods =============================
    =======================================================================
  	*/
-	function _isPeriodCompleted() internal view returns (bool) {
-		if (block.timestamp > (startTime + increaseRateAfterPeriods)) return true;
+	function _isPeriodCompleted() public view returns (bool) {
+		if (block.timestamp > (startTime + increaseRateAfterPeriods)) {
+			return true;
+		}
 		return false;
 	}
 
 	function _updateReleaseRate() internal {
 		// calculate amount to increase by
-		uint256 increaseAmount = currentReleaseRatePerPeriod * (increasePercentage / 10000);
+		uint256 increaseAmount = (currentReleaseRatePerPeriod * increasePercentage) / 10000;
+		require(increaseAmount > 0, 'Vault: INVALID_INCREASE_AMOUNT');
 
 		if ((currentReleaseRatePerPeriod + increaseAmount) > maxReleaseRatePerPeriod) {
 			// set per period release rate to max release rate in case current release rate exceeds max release rate

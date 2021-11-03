@@ -15,10 +15,6 @@ const BlockData = artifacts.require('BlockData');
 const name = 'Vault';
 const version = '1.0.0';
 
-function getAccumulatedAmount(pending, perBlockAmount, receiverShare, totalShare, totalBlocks) {
-	return pending.add(perBlockAmount.mul(totalBlocks).mul(receiverShare).div(totalShare));
-}
-
 function getReceiverShare(perBlockAmount, receiverShare, totalShare, totalBlocks) {
 	return perBlockAmount.mul(totalBlocks).mul(receiverShare).div(totalShare);
 }
@@ -143,7 +139,6 @@ contract('Vault', (accounts) => {
 
 			expect(fundReceiver1).to.be.eq(receiver1);
 			expect(fundReceiver2).to.be.eq(receiver2);
-			console.log('fundreceiver2: ', receiver2);
 
 			expect(fundReceiver1Details.lacShare).to.bignumber.be.eq(new BN('9000'));
 			expect(fundReceiver1Details.totalAccumulatedFunds).to.bignumber.be.eq(
@@ -522,8 +517,6 @@ contract('Vault', (accounts) => {
 				new BN('1')
 			);
 
-			console.log('receiver1Share: ', receiver1Share.toString());
-
 			const user1BalAfter = await this.LacToken.balanceOf(user1);
 			const receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
 
@@ -827,21 +820,113 @@ contract('Vault', (accounts) => {
 			);
 		});
 
-		it('should increase the currentReleaseRatePerPeriod correctly once the period is completed', async () => {
-			
+		it('should update the release rates correctly once the period is completed', async () => {
+			const currentReleaseRatePerPeriod = await this.Vault.currentReleaseRatePerPeriod();
+			const currentReleaseRatePerBlock = await this.Vault.currentReleaseRatePerBlock();
+			const startTime = await this.Vault.startTime();
+
+			// complete one period by increasing time. 3 days are already passed
+			await time.increase(time.duration.days('6'));
+
+			// update allocated funds
+			await this.Vault.updateAllocatedFunds();
+
+			const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
+			const currentReleaseRatePerBlockAfter = await this.Vault.currentReleaseRatePerBlock();
+			const startTimeAfter = await this.Vault.startTime();
+
+			// increase currentReleaseRatePerPeriod amount by this amount
+			const increaseAmount = currentReleaseRatePerPeriod.mul(new BN('500')).div(new BN('10000'));
+
+			expect(currentReleaseRatePerPeriod).to.bignumber.be.eq(ether('100000'));
+			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(
+				currentReleaseRatePerPeriod.div(new BN(time.duration.weeks('1').div(new BN('3'))))
+			);
+			expect(startTime).to.bignumber.be.gt(new BN('0'));
+
+			expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(
+				currentReleaseRatePerPeriod.add(increaseAmount)
+			);
+			expect(currentReleaseRatePerBlockAfter).to.bignumber.be.eq(
+				currentReleaseRatePerPeriodAfter.div(new BN(time.duration.weeks('1').div(new BN('3'))))
+			);
+			expect(startTimeAfter).to.bignumber.be.eq(startTime.add(new BN(time.duration.weeks('1'))));
 		});
 
-		it('should increase the currentReleaseRatePerBlock correctly once the period is completed', async () => {});
+		it('should update the startime correctly after updating the release rate', async () => {
+			const startTime = await this.Vault.startTime();
 
-		it('should reach the maxReleaseRatePerWeek on time correctly', async () => {});
+			// increase time
+			await time.increase(time.duration.weeks('1'));
+			// update accumulated funds
+			await this.Vault.updateAllocatedFunds();
 
-		it('should reach the maxReleaseRatePerBlock on time correctly', async () => {});
+			const startTimeAfter = await this.Vault.startTime();
 
-		it('should not increase the currentReleaseRatePerPeriod after maxReleaRatePerWeek reaches', async () => {});
+			expect(startTimeAfter).to.bignumber.be.eq(startTime.add(new BN(time.duration.weeks('1'))));
+		});
 
-		it('should update the startime correctly after updating the release rate', async () => {});
+		it('should reach the maxReleaseRatePerWeek on time correctly', async () => {
+			let currentReleaseRatePerPeriod = await this.Vault.currentReleaseRatePerPeriod();
+			let maxReleaseRatePerPeriod = await this.Vault.maxReleaseRatePerPeriod();
 
-		it('should update the startime correctly after updating the release rate after 2 weeks', async () => {});
+			// 	let noOfWeeks = 0;
+			// while (!currentReleaseRatePerPeriod.eq(maxReleaseRatePerPeriod)) {
+			// 	await time.increase(time.duration.weeks('1'));
+
+			// 	// await updateAllocated funds
+			// 	await this.Vault.updateAllocatedFunds();
+
+			// 	currentReleaseRatePerPeriod = await this.Vault.currentReleaseRatePerPeriod();
+			// 	maxReleaseRatePerPeriod = await this.Vault.maxReleaseRatePerPeriod();
+
+			// 	noOfWeeks++;
+			// }
+			// // 46 weeks required to reach max release rate
+			// console.log('Total no of weeks: ', noOfWeeks.toString());
+
+			const startTime = await this.Vault.startTime();
+
+			// increase time
+			await time.increase(time.duration.weeks('46'));
+			// await updateAllocated funds
+			await this.Vault.updateAllocatedFunds();
+
+			const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
+			const maxReleaseRatePerPeriodAfter = await this.Vault.maxReleaseRatePerPeriod();
+
+			const currentReleaseRatePerBlock = await this.Vault.currentReleaseRatePerBlock();
+
+			const startTimeAfter = await this.Vault.startTime();
+
+			expect(startTimeAfter).to.bignumber.be.eq(startTime.add(new BN(time.duration.weeks('46'))));
+
+			expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(maxReleaseRatePerPeriodAfter);
+			expect(maxReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('1000000'));
+			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(
+				maxReleaseRatePerPeriodAfter.div(new BN(time.duration.weeks('1')).div(new BN('3')))
+			);
+		});
+
+		it('should not increase the currentReleaseRatePerPeriod after maxReleaRatePerWeek reaches', async () => {
+			const currentReleaseRatePerPeriod = await this.Vault.currentReleaseRatePerPeriod();
+			const maxReleaseRatePerPeriod = await this.Vault.maxReleaseRatePerPeriod();
+			const currentReleaseRatePerBlock = await this.Vault.currentReleaseRatePerBlock();
+
+			// increase time
+			await time.increase(time.duration.weeks('1'));
+
+			// update accumulated funds
+			await this.Vault.updateAllocatedFunds();
+
+			const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
+			const maxReleaseRatePerPeriodAfter = await this.Vault.maxReleaseRatePerPeriod();
+			const currentReleaseRatePerBlockAfter = await this.Vault.currentReleaseRatePerBlock();
+
+			expect(currentReleaseRatePerPeriod).to.bignumber.be.eq(currentReleaseRatePerPeriodAfter);
+			expect(maxReleaseRatePerPeriod).to.bignumber.be.eq(maxReleaseRatePerPeriodAfter);
+			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(currentReleaseRatePerBlockAfter);
+		});
 	});
 
 	describe('updateMaxReleaseRatePerPeriod()', async () => {
@@ -1069,14 +1154,35 @@ contract('Vault', (accounts) => {
 			//update allocated funds
 			await this.Vault.updateAllocatedFunds();
 
+			const currentPerBlockAmount = await this.Vault.currentReleaseRatePerBlock();
+
+			const receiver1Share = getReceiverShare(
+				currentPerBlockAmount,
+				new BN('8000'),
+				new BN('10000'),
+				new BN('1')
+			);
+			const receiver2Share = getReceiverShare(
+				currentPerBlockAmount,
+				new BN('1000'),
+				new BN('10000'),
+				new BN('1')
+			);
+			const receiver3Share = getReceiverShare(
+				currentPerBlockAmount,
+				new BN('1000'),
+				new BN('10000'),
+				new BN('1')
+			);
+
 			//get pending accumulated funds
 			const pendingFunds1 = await this.Vault.getPendingAccumulatedFunds(receiver1);
 			const pendingFunds2 = await this.Vault.getPendingAccumulatedFunds(receiver2);
 			const pendingFunds3 = await this.Vault.getPendingAccumulatedFunds(receiver3);
 
-			expect(pendingFunds1).to.bignumber.be.eq(new BN('396825396825396824'));
-			expect(pendingFunds2).to.bignumber.be.eq(new BN('49603174603174603'));
-			expect(pendingFunds3).to.bignumber.be.eq(new BN('49603174603174603'));
+			expect(pendingFunds1).to.bignumber.be.eq(receiver1Share);
+			expect(pendingFunds2).to.bignumber.be.eq(receiver2Share);
+			expect(pendingFunds3).to.bignumber.be.eq(receiver3Share);
 		});
 	});
 
