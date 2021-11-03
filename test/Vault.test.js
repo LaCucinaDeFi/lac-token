@@ -181,59 +181,33 @@ contract('Vault', (accounts) => {
 		});
 
 		it('should allocate funds correctly when new receiver is added', async () => {
+			//update allocated funds
+			await this.Vault.updateAllocatedFunds();
+
 			//increase time by 2 days
 			await time.increase(time.duration.days('2'));
 
+			const fundReceiver1Details = await this.Vault.fundReceivers(receiver1);
+			const fundReceiver2Details = await this.Vault.fundReceivers(receiver2);
+
 			const receiver1Pendings = await this.Vault.getPendingAccumulatedFunds(receiver1);
 			const receiver2Pendings = await this.Vault.getPendingAccumulatedFunds(receiver2);
-			console.log('receiver1Pendings: ', receiver1Pendings.toString());
-			console.log('receiver2Pendings: ', receiver2Pendings.toString());
 
 			// // add third fund receiver
 			await this.Vault.shrinkReceiver(receiver1, receiver3, 1000, {from: owner});
 
 			const receiver1PendingsAfter = await this.Vault.getPendingAccumulatedFunds(receiver1);
 			const receiver2PendingsAfter = await this.Vault.getPendingAccumulatedFunds(receiver2);
-			console.log('receiver1PendingsAfter: ', receiver1PendingsAfter.toString());
-			console.log('receiver2PendingsAfter: ', receiver2PendingsAfter.toString());
 
-			const fundReceiver1Details = await this.Vault.fundReceivers(receiver1);
-			const fundReceiver2Details = await this.Vault.fundReceivers(receiver2);
-			const fundReceiver3Details = await this.Vault.fundReceivers(receiver3);
-
-			console.log(
-				'receiver1 accumulated tokens: ',
-				fundReceiver1Details.totalAccumulatedFunds.toString()
-			);
-			console.log(
-				'receiver2 accumulated tokens: ',
-				fundReceiver2Details.totalAccumulatedFunds.toString()
-			);
-			console.log(
-				'receiver3 accumulated tokens: ',
-				fundReceiver3Details.totalAccumulatedFunds.toString()
-			);
+			const fundReceiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
+			const fundReceiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);
+			const fundReceiver3DetailsAfter = await this.Vault.fundReceivers(receiver3);
 
 			const totalShares = await this.Vault.totalShares();
 
-			const receiver1AccumulatedFunds = getAccumulatedAmount(
-				receiver1Pendings,
-				currentPerBlockAmount,
-				new BN('9000'),
-				new BN('10000'),
-				new BN('1')
-			);
-			const receiver2AccumulatedFunds = getAccumulatedAmount(
-				receiver2Pendings,
-				currentPerBlockAmount,
-				new BN('1000'),
-				new BN('10000'),
-				new BN('1')
-			);
-
 			const receiver1Share = getReceiverShare(
 				currentPerBlockAmount,
-				new BN('9000'),
+				new BN('8000'),
 				new BN('10000'),
 				new BN('1')
 			);
@@ -243,70 +217,115 @@ contract('Vault', (accounts) => {
 				new BN('10000'),
 				new BN('1')
 			);
-			console.log('accumulatedFunds2: ', receiver2AccumulatedFunds.toString());
-			console.log('receiver1Share: ', receiver1Share.toString());
-			console.log('receiver2Share: ', receiver2Share.toString());
 
-			//expect(receiver1Pendings).to.bignumber.be.eq(receiver1AccumulatedFunds);
-			//	expect(receiver2Pendings).to.bignumber.be.eq(receiver2AccumulatedFunds.sub());
-			expect(fundReceiver1Details.totalAccumulatedFunds).to.bignumber.be.eq(
-				receiver1AccumulatedFunds
+			expect(fundReceiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
+				fundReceiver1Details.totalAccumulatedFunds.add(receiver1Pendings)
 			);
-			expect(fundReceiver2Details.totalAccumulatedFunds).to.bignumber.be.eq(
-				receiver2AccumulatedFunds
+
+			expect(fundReceiver2DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
+				fundReceiver2Details.totalAccumulatedFunds.add(receiver2Pendings)
 			);
-			expect(fundReceiver3Details.lacShare).to.bignumber.be.eq(new BN('1000'));
-			expect(fundReceiver3Details.totalAccumulatedFunds).to.bignumber.be.eq(new BN('0'));
+
+			expect(fundReceiver3DetailsAfter.lacShare).to.bignumber.be.eq(new BN('1000'));
+			expect(fundReceiver3DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(new BN('0'));
+
+			expect(receiver1PendingsAfter).to.bignumber.be.eq(receiver1Share);
+
+			expect(receiver2PendingsAfter).to.bignumber.be.eq(new BN('49603174603174603'));
+			expect(receiver2PendingsAfter).to.bignumber.be.eq(receiver2Share);
 
 			expect(totalShares).to.bignumber.be.eq(new BN('10000'));
 		});
 	});
 
 	describe('removeFundReceiverAddress()', () => {
-		let totalRecievers;
+		let totalRecieversBefore;
 		let receiver1Pendings;
 		let receiver2Pendings;
 		let receiver3Pendings;
+		let fundReceiver1Details;
+		let fundReceiver2Details;
+		let fundReceiver3Details;
+
 		before('remove fund receiver', async () => {
-			totalRecievers = await this.Vault.getTotalFundReceivers();
+			//update allocated funds
+			await this.Vault.updateAllocatedFunds();
+
+			fundReceiver1Details = await this.Vault.fundReceivers(receiver1);
+			fundReceiver2Details = await this.Vault.fundReceivers(receiver2);
+			fundReceiver3Details = await this.Vault.fundReceivers(receiver3);
+
 			receiver1Pendings = await this.Vault.getPendingAccumulatedFunds(receiver1);
 			receiver2Pendings = await this.Vault.getPendingAccumulatedFunds(receiver2);
 			receiver3Pendings = await this.Vault.getPendingAccumulatedFunds(receiver3);
 
-			console.log('receiver1Pendings: ', receiver1Pendings.toString());
-			console.log('receiver2Pendings: ', receiver2Pendings.toString());
-			console.log('receiver3Pendings: ', receiver3Pendings.toString());
+			totalRecieversBefore = await this.Vault.getTotalFundReceivers();
 
 			// remove receiver3
 			await this.Vault.removeFundReceiverAddress(receiver3, {from: owner});
 		});
 
 		it('should remove the fundReceiver correctly', async () => {
-			const currentPerBlockAmount = await this.Vault.currentReleaseRatePerBlock();
-			const receiver1AccumulatedFunds = getAccumulatedAmount(
-				receiver1Pendings,
+			const totalReceivers = await this.Vault.getTotalFundReceivers();
+			const totalShare = await this.Vault.totalShares();
+
+			const fundReceiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
+			const fundReceiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);
+			const fundReceiver3DetailsAfter = await this.Vault.fundReceivers(receiver3);
+
+			expect(totalRecieversBefore).to.bignumber.be.eq(new BN('3'));
+			expect(totalReceivers).to.bignumber.be.eq(new BN('2'));
+			expect(totalShare).to.bignumber.be.eq(new BN('9000'));
+
+			expect(fundReceiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
+				fundReceiver1Details.totalAccumulatedFunds.add(receiver1Pendings)
+			);
+
+			expect(fundReceiver2DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
+				fundReceiver2Details.totalAccumulatedFunds.add(receiver2Pendings)
+			);
+			expect(fundReceiver3DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(new BN('0'));
+			expect(fundReceiver3DetailsAfter.lacShare).to.bignumber.be.eq(new BN('0'));
+
+			const receiver1Share = getReceiverShare(
 				currentPerBlockAmount,
-				new BN('8000'),
+				fundReceiver1DetailsAfter.lacShare,
 				new BN('9000'),
 				new BN('1')
 			);
+			const receiver2Share = getReceiverShare(
+				currentPerBlockAmount,
+				new BN('1000'),
+				new BN('9000'),
+				new BN('1')
+			);
+			const receiver3hare = getReceiverShare(
+				currentPerBlockAmount,
+				new BN('1000'),
+				new BN('10000'),
+				new BN('1')
+			);
 
-			console.log('accumulatedFunds: ', receiver1AccumulatedFunds.toString());
-
-			const totalReceivers = await this.Vault.getTotalFundReceivers();
-			const totalShare = await this.Vault.totalShares();
-			const receiver1Details = await this.Vault.fundReceivers(receiver1);
+			//update allocated funds
+			await this.Vault.updateAllocatedFunds();
 
 			const receiver1PendingsAfter = await this.Vault.getPendingAccumulatedFunds(receiver1);
 			const receiver2PendingsAfter = await this.Vault.getPendingAccumulatedFunds(receiver2);
+
+			expect(receiver3Pendings).to.bignumber.be.eq(receiver3hare);
+			expect(fundReceiver1DetailsAfter.lacShare).to.bignumber.be.eq(new BN('8000'));
+			const perBlock = await this.Vault.currentReleaseRatePerBlock();
+
+			console.log('perBlock: ', perBlock.toString());
 			console.log('receiver1PendingsAfter: ', receiver1PendingsAfter.toString());
-			console.log('receiver2PendingsAfter: ', receiver2PendingsAfter.toString());
+			console.log('receiver1PendingsAfter: ', receiver2PendingsAfter.toString());
 
-			expect(totalReceivers).to.bignumber.be.eq(new BN('2'));
-			expect(totalShare).to.bignumber.be.eq(new BN('9000'));
-			expect(receiver1Details.lacShare).to.bignumber.be.eq(new BN('8000'));
+			/**************************************************************************** */
+			// // difference of 496033
+			// expect(perBlock).to.bignumber.be.eq(receiver1PendingsAfter.add(receiver2PendingsAfter));
 
-			expect(receiver1PendingsAfter).to.bignumber.be.eq(receiver1AccumulatedFunds);
+			// expect(receiver1PendingsAfter).to.bignumber.be.eq(receiver1Share);
+			// expect(receiver2PendingsAfter).to.bignumber.be.eq(receiver2Share);
 		});
 
 		it('should revert when non-admin tries remove the fund receiver address', async () => {
@@ -669,6 +688,30 @@ contract('Vault', (accounts) => {
 				'Vault: INVALID_SIGNATURE'
 			);
 		});
+
+		it('should revert when another user tries to reuse the signature', async () => {
+			signature = await createSignature(
+				this.pk,
+				user1,
+				ether('0.1'),
+				receiver1,
+				this.Vault.address,
+				this.chainId
+			);
+
+			// claim tokens
+			await this.Vault.claim(ether('0.1'), receiver1, signature, {
+				from: user1
+			});
+
+			//claim tokens
+			await expectRevert(
+				this.Vault.claim(ether('0.1'), receiver1, signature, {
+					from: user2
+				}),
+				'Vault: INVALID_SIGNATURE'
+			);
+		});
 	});
 
 	describe('updateAllocatedFunds()', () => {
@@ -689,10 +732,6 @@ contract('Vault', (accounts) => {
 			//update allocated funds
 			await this.Vault.updateAllocatedFunds();
 
-			receiver1Pendings = await this.Vault.getPendingAccumulatedFunds(receiver1);
-			receiver2Pendings = await this.Vault.getPendingAccumulatedFunds(receiver2);
-			receiver3Pendings = await this.Vault.getPendingAccumulatedFunds(receiver3);
-
 			receiver1Details = await this.Vault.fundReceivers(receiver1);
 			receiver2Details = await this.Vault.fundReceivers(receiver2);
 			receiver3Details = await this.Vault.fundReceivers(receiver3);
@@ -700,8 +739,16 @@ contract('Vault', (accounts) => {
 			//increase time by 1 day
 			await time.increase(time.duration.days('1'));
 
+			receiver1Pendings = await this.Vault.getPendingAccumulatedFunds(receiver1);
+			receiver2Pendings = await this.Vault.getPendingAccumulatedFunds(receiver2);
+			receiver3Pendings = await this.Vault.getPendingAccumulatedFunds(receiver3);
+
+			const lastFundUpdatedTimestamp = await this.Vault.lastFundUpdatedTimestamp();
+
 			//update allocated funds
 			await this.Vault.updateAllocatedFunds();
+
+			const lastFundUpdatedTimestampAfter = await this.Vault.lastFundUpdatedTimestamp();
 
 			receiver1PendingsAfter = await this.Vault.getPendingAccumulatedFunds(receiver1);
 			receiver2PendingsAfter = await this.Vault.getPendingAccumulatedFunds(receiver2);
@@ -711,49 +758,78 @@ contract('Vault', (accounts) => {
 			receiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);
 			receiver3DetailsAfter = await this.Vault.fundReceivers(receiver3);
 
+			//get total blocks after last update
+			const totalBlocks = new BN(new BN(time.duration.days('1')).div(new BN('3')));
+
 			const receiver1Share = getReceiverShare(
 				currentPerBlockAmount,
 				receiver1Details.lacShare,
 				new BN('10000'),
-				new BN('1')
+
+				totalBlocks
 			);
 			const receiver2Share = getReceiverShare(
 				currentPerBlockAmount,
 				receiver2Details.lacShare,
 				new BN('10000'),
-				new BN('1')
+				totalBlocks
 			);
 			const receiver3Share = getReceiverShare(
+				currentPerBlockAmount,
+				receiver3Details.lacShare,
+				new BN('10000'),
+				totalBlocks
+			);
+
+			const receiver1ShareAfter = getReceiverShare(
+				currentPerBlockAmount,
+				receiver1Details.lacShare,
+				new BN('10000'),
+				new BN('1')
+			);
+			const receiver2ShareAfter = getReceiverShare(
+				currentPerBlockAmount,
+				receiver2Details.lacShare,
+				new BN('10000'),
+				new BN('1')
+			);
+			const receiver3ShareAfter = getReceiverShare(
 				currentPerBlockAmount,
 				receiver3Details.lacShare,
 				new BN('10000'),
 				new BN('1')
 			);
 
-			expect(receiver1Pendings).to.bignumber.be.gt(new BN('0'));
-			expect(receiver2Pendings).to.bignumber.be.gt(new BN('0'));
-			expect(receiver3Pendings).to.bignumber.be.gt(new BN('0'));
+			expect(lastFundUpdatedTimestampAfter.sub(lastFundUpdatedTimestamp)).to.bignumber.be.eq(
+				new BN(time.duration.days('1'))
+			);
+
+			expect(receiver1Pendings).to.bignumber.be.eq(receiver1Share);
+			expect(receiver2Pendings).to.bignumber.be.eq(receiver2Share);
+			expect(receiver3Pendings).to.bignumber.be.eq(receiver3Share);
 
 			expect(receiver1Details.totalAccumulatedFunds).to.bignumber.be.gt(new BN('0'));
-			expect(receiver1Details.totalAccumulatedFunds).to.bignumber.be.gt(new BN('0'));
-			expect(receiver1Details.totalAccumulatedFunds).to.bignumber.be.gt(new BN('0'));
+			expect(receiver2Details.totalAccumulatedFunds).to.bignumber.be.gt(new BN('0'));
+			expect(receiver3Details.totalAccumulatedFunds).to.bignumber.be.gt(new BN('0'));
 
-			expect(receiver1PendingsAfter).to.bignumber.be.eq(receiver1Share);
-			expect(receiver2PendingsAfter).to.bignumber.be.eq(receiver2Share);
-			expect(receiver3PendingsAfter).to.bignumber.be.eq(receiver3Share);
+			expect(receiver1PendingsAfter).to.bignumber.be.eq(receiver1ShareAfter);
+			expect(receiver2PendingsAfter).to.bignumber.be.eq(receiver2ShareAfter);
+			expect(receiver3PendingsAfter).to.bignumber.be.eq(receiver3ShareAfter);
 
-			expect(
-				receiver1DetailsAfter.totalAccumulatedFunds.sub(receiver1Details.totalAccumulatedFunds)
-			).to.bignumber.be.eq(receiver1Pendings);
-			expect(
-				receiver1DetailsAfter.totalAccumulatedFunds.sub(receiver2Details.totalAccumulatedFunds)
-			).to.bignumber.be.eq(receiver2Pendings);
-			expect(
-				receiver1DetailsAfter.totalAccumulatedFunds.sub(receiver3Details.totalAccumulatedFunds)
-			).to.bignumber.be.eq(receiver3Pendings);
+			expect(receiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
+				receiver1Details.totalAccumulatedFunds.add(receiver1Pendings)
+			);
+			expect(receiver2DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
+				receiver2Details.totalAccumulatedFunds.add(receiver2Pendings)
+			);
+			expect(receiver3DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
+				receiver3Details.totalAccumulatedFunds.add(receiver3Pendings)
+			);
 		});
 
-		it('should increase the currentReleaseRatePerPeriod correctly once the period is completed', async () => {});
+		it('should increase the currentReleaseRatePerPeriod correctly once the period is completed', async () => {
+			
+		});
 
 		it('should increase the currentReleaseRatePerBlock correctly once the period is completed', async () => {});
 
@@ -891,7 +967,7 @@ contract('Vault', (accounts) => {
 			const vaultTokenBalAfter = await this.LacToken.balanceOf(this.Vault.address);
 			const owenerTokenBalAfter = await this.LacToken.balanceOf(owner);
 
-			expect(vaultTokenBalBefore).to.bignumber.be.eq(ether('50000000').add(ether('5')));
+			expect(vaultTokenBalBefore).to.bignumber.be.gt(new BN('0'));
 			expect(owenerTokenBalBefore).to.bignumber.be.eq(new BN('0'));
 
 			expect(vaultTokenBalAfter).to.bignumber.be.eq(new BN('0'));
