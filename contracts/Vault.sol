@@ -276,7 +276,10 @@ contract Vault is
 	 */
 	function claimAllTokens(address _user, address _tokenAddress) external onlyAdmin {
 		require(_user != address(0), 'Vault: INVALID_USER_ADDRESS');
-		require(_tokenAddress != address(0), 'Vault: INVALID_TOKEN_ADDRESS');
+		require(
+			_tokenAddress != address(0) && _tokenAddress != address(LacToken),
+			'Vault: INVALID_TOKEN_ADDRESS'
+		);
 
 		uint256 tokenAmount = IERC20Upgradeable(_tokenAddress).balanceOf(address(this));
 
@@ -292,7 +295,10 @@ contract Vault is
 		uint256 _amount
 	) external onlyAdmin {
 		require(_user != address(0), 'Vault: INVALID_USER_ADDRESS');
-		require(_tokenAddress != address(0), 'Vault: INVALID_TOKEN_ADDRESS');
+		require(
+			_tokenAddress != address(0) && _tokenAddress != address(LacToken),
+			'Vault: INVALID_TOKEN_ADDRESS'
+		);
 
 		uint256 tokenAmount = IERC20Upgradeable(_tokenAddress).balanceOf(address(this));
 		require(_amount > 0 && tokenAmount >= _amount, 'Vault: INSUFFICIENT_BALANCE');

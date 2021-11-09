@@ -11,6 +11,7 @@ const {signTypedData_v4} = require('eth-sig-util');
 const LacToken = artifacts.require('LacToken');
 const Vault = artifacts.require('Vault');
 const BlockData = artifacts.require('BlockData');
+const SampleToken = artifacts.require('SampleToken');
 
 const name = 'Vault';
 const version = '1.0.0';
@@ -71,6 +72,9 @@ contract('Vault', (accounts) => {
 	before('deploy contract', async () => {
 		// deploy LAC token
 		this.LacToken = await LacToken.new('Lacucina Token', 'LAC', minter, ether('500000000'));
+
+		// deploy Sample token
+		this.SampleToken = await SampleToken.new();
 
 		// deploy Vault
 		this.Vault = await deployProxy(Vault, [
@@ -1041,22 +1045,22 @@ contract('Vault', (accounts) => {
 	describe('claimAllTokens()', () => {
 		it('should claim tokens send to vault contract', async () => {
 			//transfer tokens to Vault
-			await this.LacToken.transfer(this.Vault.address, ether('5'), {from: minter});
+			await this.SampleToken.mint(this.Vault.address, ether('5'), {from: owner});
 
-			const vaultTokenBalBefore = await this.LacToken.balanceOf(this.Vault.address);
-			const owenerTokenBalBefore = await this.LacToken.balanceOf(owner);
+			const vaultTokenBalBefore = await this.SampleToken.balanceOf(this.Vault.address);
+			const owenerTokenBalBefore = await this.SampleToken.balanceOf(owner);
 
 			// claim all tokens
-			await this.Vault.claimAllTokens(owner, this.LacToken.address, {from: owner});
+			await this.Vault.claimAllTokens(owner, this.SampleToken.address, {from: owner});
 
-			const vaultTokenBalAfter = await this.LacToken.balanceOf(this.Vault.address);
-			const owenerTokenBalAfter = await this.LacToken.balanceOf(owner);
+			const vaultTokenBalAfter = await this.SampleToken.balanceOf(this.Vault.address);
+			const owenerTokenBalAfter = await this.SampleToken.balanceOf(owner);
 
-			expect(vaultTokenBalBefore).to.bignumber.be.gt(new BN('0'));
+			expect(vaultTokenBalBefore).to.bignumber.be.eq(ether('5'));
 			expect(owenerTokenBalBefore).to.bignumber.be.eq(new BN('0'));
 
 			expect(vaultTokenBalAfter).to.bignumber.be.eq(new BN('0'));
-			expect(owenerTokenBalAfter).to.bignumber.be.eq(vaultTokenBalBefore);
+			expect(owenerTokenBalAfter).to.bignumber.be.eq(ether('5'));
 		});
 
 		it('should revert when non-admin tries to claim all the tokens', async () => {
@@ -1072,9 +1076,15 @@ contract('Vault', (accounts) => {
 				'Vault: INVALID_USER_ADDRESS'
 			);
 		});
-		it('should revert when admin tries to claim all the tokens to zero token address', async () => {
+		it('should revert when admin tries to claim all the tokens for zero token address', async () => {
 			await expectRevert(
 				this.Vault.claimAllTokens(owner, ZERO_ADDRESS, {from: owner}),
+				'Vault: INVALID_TOKEN_ADDRESS'
+			);
+		});
+		it('should revert when admin tries to claim all the tokens for LAC token address', async () => {
+			await expectRevert(
+				this.Vault.claimAllTokens(owner, this.LacToken.address, {from: owner}),
 				'Vault: INVALID_TOKEN_ADDRESS'
 			);
 		});
@@ -1083,16 +1093,16 @@ contract('Vault', (accounts) => {
 	describe('claimTokens()', () => {
 		it('should claim specified amount of tokens send to Vault contract', async () => {
 			//transfer tokens to Vault
-			await this.LacToken.transfer(this.Vault.address, ether('5'), {from: minter});
+			await this.SampleToken.mint(this.Vault.address, ether('5'), {from: owner});
 
-			const vaultTokenBalBefore = await this.LacToken.balanceOf(this.Vault.address);
-			const minterTokenBalBefore = await this.LacToken.balanceOf(minter);
+			const vaultTokenBalBefore = await this.SampleToken.balanceOf(this.Vault.address);
+			const minterTokenBalBefore = await this.SampleToken.balanceOf(minter);
 
 			// claim all tokens
-			await this.Vault.claimTokens(minter, this.LacToken.address, ether('4'), {from: owner});
+			await this.Vault.claimTokens(minter, this.SampleToken.address, ether('4'), {from: owner});
 
-			const vaultTokenBalAfter = await this.LacToken.balanceOf(this.Vault.address);
-			const minterTokenBalAfter = await this.LacToken.balanceOf(minter);
+			const vaultTokenBalAfter = await this.SampleToken.balanceOf(this.Vault.address);
+			const minterTokenBalAfter = await this.SampleToken.balanceOf(minter);
 
 			expect(vaultTokenBalBefore).to.bignumber.be.eq(ether('5'));
 
@@ -1102,30 +1112,39 @@ contract('Vault', (accounts) => {
 
 		it('should revert when non-admin tries to claim given no. of the tokens', async () => {
 			await expectRevert(
-				this.Vault.claimTokens(owner, this.LacToken.address, ether('4'), {from: minter}),
+				this.Vault.claimTokens(owner, this.SampleToken.address, ether('4'), {from: minter}),
 				'Vault: ONLY_ADMIN_CAN_CALL'
 			);
 		});
+
 		it('should revert when admin tries to claim  given no. of the tokens to zero user address', async () => {
 			await expectRevert(
-				this.Vault.claimTokens(ZERO_ADDRESS, this.LacToken.address, ether('4'), {from: owner}),
+				this.Vault.claimTokens(ZERO_ADDRESS, this.SampleToken.address, ether('4'), {from: owner}),
 				'Vault: INVALID_USER_ADDRESS'
 			);
 		});
-		it('should revert when admin tries to claim  given no. of the tokens to zero token address', async () => {
+
+		it('should revert when admin tries to claim  given no. of the tokens for zero token address', async () => {
 			await expectRevert(
 				this.Vault.claimTokens(owner, ZERO_ADDRESS, ether('4'), {from: owner}),
 				'Vault: INVALID_TOKEN_ADDRESS'
 			);
 		});
 
+		it('should revert when admin tries to claim  given no. of the tokens for LAC token address', async () => {
+			await expectRevert(
+				this.Vault.claimTokens(owner, this.LacToken.address, ether('4'), {from: owner}),
+				'Vault: INVALID_TOKEN_ADDRESS'
+			);
+		});
+
 		it('should revert when admin tries to claim invalid amount of tokens', async () => {
 			await expectRevert(
-				this.Vault.claimTokens(owner, this.LacToken.address, ether('0'), {from: owner}),
+				this.Vault.claimTokens(owner, this.SampleToken.address, ether('0'), {from: owner}),
 				'Vault: INSUFFICIENT_BALANCE'
 			);
 			await expectRevert(
-				this.Vault.claimTokens(owner, this.LacToken.address, ether('2'), {from: owner}),
+				this.Vault.claimTokens(owner, this.SampleToken.address, ether('2'), {from: owner}),
 				'Vault: INSUFFICIENT_BALANCE'
 			);
 		});
