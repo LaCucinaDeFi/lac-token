@@ -7,7 +7,6 @@ import '@openzeppelin/contracts/access/Ownable.sol';
 
 // File: contracts/SampleToken.sol
 
-// SampleToken with Governance.
 contract SampleToken is ERC20('Sample Token ', 'SAMPLE'), Ownable {
 	function mint(address _to, uint256 _amount) public onlyOwner {
 		_mint(_to, _amount);
