@@ -1,9 +1,8 @@
 pragma solidity ^0.8.0;
 
 import '@openzeppelin/contracts/token/ERC20/ERC20.sol';
-import '@openzeppelin/contracts/access/AccessControl.sol';
 
-contract LacToken is ERC20, AccessControl {
+contract LacToken is ERC20 {
 	/*
    =======================================================================
    ======================== Constructor/Initializer ======================
@@ -22,8 +21,6 @@ contract LacToken is ERC20, AccessControl {
 		uint256 _preMintAmount
 	) ERC20(_name, _symbol) {
 		require(_preMintAmount > 0, 'LacToken: INVALID_PREMINT_AMOUNT');
-
-		_setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
 
 		//mint preMint amount of tokens to
 		_mint(_preMintAddress, _preMintAmount);
