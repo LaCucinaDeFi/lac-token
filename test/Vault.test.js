@@ -24,6 +24,7 @@ async function createSignature(
 	pk,
 	userAddress,
 	claimAmount,
+	nonceValue,
 	receiverAddress,
 	contractAddress,
 	chainId
@@ -40,7 +41,8 @@ async function createSignature(
 				Claim: [
 					{name: 'account', type: 'address'},
 					{name: 'amount', type: 'uint256'},
-					{name: 'receiver', type: 'address'}
+					{name: 'receiver', type: 'address'},
+					{name: 'nonce', type: 'uint256'}
 				]
 			},
 			domain: {
@@ -50,7 +52,12 @@ async function createSignature(
 				verifyingContract: contractAddress
 			},
 			primaryType: 'Claim',
-			message: {account: userAddress, amount: claimAmount, receiver: receiverAddress}
+			message: {
+				account: userAddress,
+				amount: claimAmount,
+				receiver: receiverAddress,
+				nonce: nonceValue
+			}
 		}
 	};
 
@@ -481,6 +488,7 @@ contract('Vault', (accounts) => {
 	});
 
 	describe('claim()', () => {
+		let currentNonce;
 		before(async () => {
 			const OPERATOR_ROLE = await this.Vault.OPERATOR_ROLE();
 			await this.Vault.grantRole(OPERATOR_ROLE, receiver1);
@@ -488,6 +496,9 @@ contract('Vault', (accounts) => {
 			await this.Vault.grantRole(OPERATOR_ROLE, receiver3);
 
 			await this.Vault.grantRole(OPERATOR_ROLE, '0x0055f67515c252860fe9b27f6903d44fcfc3a727');
+
+			// get current nonce of user
+			currentNonce = await this.Vault.userNonce(user1);
 		});
 
 		it('should allow user to claim', async () => {
@@ -502,6 +513,7 @@ contract('Vault', (accounts) => {
 				this.pk,
 				user1,
 				receiver1Details.totalAccumulatedFunds,
+				currentNonce,
 				receiver1,
 				this.Vault.address,
 				this.chainId
@@ -523,7 +535,10 @@ contract('Vault', (accounts) => {
 
 			const user1BalAfter = await this.LacToken.balanceOf(user1);
 			const receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
+			const nonceAfter = await this.Vault.userNonce(user1);
 
+			expect(currentNonce).to.bignumber.be.eq(new BN('0'));
+			expect(nonceAfter).to.bignumber.be.eq(new BN('1'));
 			expect(user1Bal).to.bignumber.be.eq(new BN('0'));
 			expect(user1BalAfter).to.bignumber.be.eq(receiver1Details.totalAccumulatedFunds);
 			expect(receiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(receiver1Share);
@@ -547,6 +562,7 @@ contract('Vault', (accounts) => {
 				this.pk,
 				user1,
 				ether('5'),
+				currentNonce,
 				receiver1,
 				this.Vault.address,
 				this.chainId
@@ -566,6 +582,7 @@ contract('Vault', (accounts) => {
 				this.pk,
 				user1,
 				ether('0'),
+				currentNonce,
 				receiver1,
 				this.Vault.address,
 				this.chainId
@@ -585,6 +602,7 @@ contract('Vault', (accounts) => {
 				this.pk,
 				user1,
 				ether('1'),
+				currentNonce,
 				user2,
 				this.Vault.address,
 				this.chainId
@@ -604,6 +622,7 @@ contract('Vault', (accounts) => {
 				this.pk,
 				user1,
 				ether('2'),
+				currentNonce,
 				receiver1,
 				this.Vault.address,
 				this.chainId
@@ -621,6 +640,7 @@ contract('Vault', (accounts) => {
 				this.pk,
 				user2,
 				ether('0.1'),
+				currentNonce,
 				receiver1,
 				this.Vault.address,
 				this.chainId
@@ -638,6 +658,7 @@ contract('Vault', (accounts) => {
 				this.pk,
 				user1,
 				ether('0.1'),
+				currentNonce,
 				receiver2,
 				this.Vault.address,
 				this.chainId
@@ -655,6 +676,7 @@ contract('Vault', (accounts) => {
 				this.pk,
 				user1,
 				ether('0.1'),
+				currentNonce,
 				receiver1,
 				this.BlockData.address,
 				this.chainId
@@ -672,6 +694,7 @@ contract('Vault', (accounts) => {
 				this.pk,
 				user1,
 				ether('0.1'),
+				currentNonce,
 				receiver1,
 				this.Vault.address,
 				new BN('111')
@@ -691,15 +714,11 @@ contract('Vault', (accounts) => {
 				this.pk,
 				user1,
 				ether('0.1'),
+				currentNonce,
 				receiver1,
 				this.Vault.address,
 				this.chainId
 			);
-
-			// claim tokens
-			await this.Vault.claim(ether('0.1'), receiver1, signature, {
-				from: user1
-			});
 
 			//claim tokens
 			await expectRevert(
@@ -708,6 +727,47 @@ contract('Vault', (accounts) => {
 				}),
 				'Vault: INVALID_SIGNATURE'
 			);
+		});
+
+		it('should revert when user tries to reuse the signature with old nonce value', async () => {
+			signature = await createSignature(
+				this.pk,
+				user1,
+				ether('0.1'),
+				currentNonce,
+				receiver1,
+				this.Vault.address,
+				this.chainId
+			);
+
+			//claim tokens
+			await expectRevert(
+				this.Vault.claim(ether('0.1'), receiver1, signature, {
+					from: user1
+				}),
+				'Vault: INVALID_SIGNATURE'
+			);
+
+			// should be able to claim with latest nonce
+			currentNonce = await this.Vault.userNonce(user1);
+
+			signature = await createSignature(
+				this.pk,
+				user1,
+				ether('0.2'),
+				currentNonce,
+				receiver1,
+				this.Vault.address,
+				this.chainId
+			);
+
+			//claim tokens
+			await this.Vault.claim(ether('0.2'), receiver1, signature, {
+				from: user1
+			});
+
+			const nonceAfter = await this.Vault.userNonce(user1);
+			expect(nonceAfter).to.bignumber.be.eq(new BN('2'));
 		});
 	});
 
