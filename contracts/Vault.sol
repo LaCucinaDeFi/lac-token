@@ -58,6 +58,9 @@ contract Vault is
 	/// fundReceiver => share percentage
 	mapping(address => FundReceiver) public fundReceivers;
 
+	/// userAddress => nonce
+	mapping(address => uint256) public userNonce;
+
 	/*
    =======================================================================
    ======================== Constructor/Initializer ======================
@@ -143,11 +146,17 @@ contract Vault is
 			_amount > 0 && _amount <= fundReceivers[_receiver].totalAccumulatedFunds,
 			'Vault: INSUFFICIENT_AMOUNT'
 		);
-		require(_verify(_hash(_amount, _receiver), _signature), 'Vault: INVALID_SIGNATURE');
+		require(
+			_verify(_hash(_amount, _receiver, userNonce[msg.sender]), _signature),
+			'Vault: INVALID_SIGNATURE'
+		);
 
 		require(LacToken.transfer(msg.sender, _amount), 'Vault: TRANSFER_FAILED');
 
 		fundReceivers[_receiver].totalAccumulatedFunds -= _amount;
+
+		//update user nonce
+		userNonce[msg.sender] += 1;
 
 		emit Claimed(msg.sender, _receiver, _amount, block.timestamp);
 	}
@@ -431,15 +440,20 @@ contract Vault is
 		startTime = startTime + increaseRateAfterPeriods;
 	}
 
-	function _hash(uint256 _amount, address _receiver) internal view returns (bytes32) {
+	function _hash(
+		uint256 _amount,
+		address _receiver,
+		uint256 _nonce
+	) internal view returns (bytes32) {
 		return
 			_hashTypedDataV4(
 				keccak256(
 					abi.encode(
-						keccak256('Claim(address account,uint256 amount,address receiver)'),
+						keccak256('Claim(address account,uint256 amount,address receiver,uint256 nonce)'),
 						msg.sender,
 						_amount,
-						_receiver
+						_receiver,
+						_nonce
 					)
 				)
 			);
