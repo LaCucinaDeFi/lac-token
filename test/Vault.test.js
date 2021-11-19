@@ -5,7 +5,7 @@ const {expect} = require('chai');
 const {expectRevert, BN, ether, time} = require('@openzeppelin/test-helpers');
 const {deployProxy, upgradeProxy} = require('@openzeppelin/truffle-upgrades');
 const {ZERO_ADDRESS} = require('@openzeppelin/test-helpers/src/constants');
-const {PRIVATE_KEY} = require('../secrets.json');
+const {PRIVATE_KEY} = require('../secrets.test.json');
 const {signTypedData_v4} = require('eth-sig-util');
 
 const LacToken = artifacts.require('LacToken');
