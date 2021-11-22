@@ -61,22 +61,18 @@ module.exports = {
 			gasPrice: 20000000000, // 20 gwei (in wei) (default: 100 gwei)
 			websocket: true // Enable EventEmitter interface for web3 (default: false)
 		},
-		bsc_pumapay: {
-			provider: () => new HDWalletProvider(mnemonic, 'http://bsc-test.pumapay.io:8545'),
-			network_id: 56,
-			gasPrice: 10000000000, // 20 gwei (in wei) (default: 100 gwei)
-			skipDryRun: true
-		},
 		bsc_test: {
 			provider: () =>
-				new HDWalletProvider(test_data.mnemonic, 'https://data-seed-prebsc-1-s2.binance.org:8545/'),
+				new HDWalletProvider(test_data.mnemonic, 'https://data-seed-prebsc-1-s1.binance.org:8545/'),
 			network_id: 97,
+			gas: 29000000,
 			gasPrice: 10000000000, // 10 gwei (in wei)
 			skipDryRun: true
 		},
 		bsc_main: {
 			provider: () => new HDWalletProvider(mnemonic, 'https://bsc-dataseed1.ninicoin.io'),
 			network_id: 56,
+			gas: 8000000,
 			gasPrice: 10000000000, // 10 gwei (in wei)
 			skipDryRun: true
 		},

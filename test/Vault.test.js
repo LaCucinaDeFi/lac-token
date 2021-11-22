@@ -114,7 +114,6 @@ contract('Vault', (accounts) => {
 			const increasePercentage = await this.Vault.increasePercentage();
 			const increaseRateAfterPeriods = await this.Vault.increaseRateAfterPeriods();
 			const lastFundUpdatedTimestamp = await this.Vault.lastFundUpdatedTimestamp();
-
 			expect(lacTokenAddress).to.be.eq(this.LacToken.address);
 
 			expect(sartTime).to.bignumber.be.gt(new BN('0'));
