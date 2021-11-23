@@ -77,7 +77,8 @@ contract('Vault', (accounts) => {
 	const receiver1 = accounts[5];
 	const receiver2 = accounts[6];
 	const receiver3 = accounts[7];
-
+	const vaultKeeper = accounts[8];
+	const blocksPerWeek = Number(time.duration.weeks('1')) / 3;
 	let currentPerBlockAmount;
 	before('deploy contract', async () => {
 		// deploy LAC token
@@ -89,12 +90,12 @@ contract('Vault', (accounts) => {
 		// deploy Vault
 		this.Vault = await deployProxy(Vault, [
 			'Vault',
-			'1.0.0',
 			this.LacToken.address,
 			ether('100000'),
 			ether('1000000'),
 			500, // 5%
-			time.duration.weeks(1) // 1 weeks
+			blocksPerWeek, // 1 weeks
+			blocksPerWeek
 		]);
 
 		this.web3 = new Web3(new Web3.providers.HttpProvider('http://localhost:8555'));
@@ -110,23 +111,29 @@ contract('Vault', (accounts) => {
 	describe('initialize()', () => {
 		it('should initialize vault correctly', async () => {
 			const lacTokenAddress = await this.Vault.LacToken();
-			const sartTime = await this.Vault.startTime();
+			const startBlock = await this.Vault.startBlock();
 			const currentReleaseRatePerPeriod = await this.Vault.currentReleaseRatePerPeriod();
 			const currentReleaseRatePerBlock = await this.Vault.currentReleaseRatePerBlock();
 			const maxReleaseRatePerPeriod = await this.Vault.maxReleaseRatePerPeriod();
 			const increasePercentage = await this.Vault.increasePercentage();
 			const increaseRateAfterPeriods = await this.Vault.increaseRateAfterPeriods();
-			const lastFundUpdatedTimestamp = await this.Vault.lastFundUpdatedTimestamp();
+			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
+			const totalBlocksPerWeek = await this.Vault.totalBlocksPerPeriod();
 
 			expect(lacTokenAddress).to.be.eq(this.LacToken.address);
 
-			expect(sartTime).to.bignumber.be.gt(new BN('0'));
+			expect(startBlock).to.bignumber.be.gt(new BN('0'));
 			expect(currentReleaseRatePerPeriod).to.bignumber.be.eq(ether('100000'));
 			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(new BN('496031746031746031'));
 			expect(maxReleaseRatePerPeriod).to.bignumber.be.eq(ether('1000000'));
 			expect(increasePercentage).to.bignumber.be.eq(new BN('500'));
-			expect(increaseRateAfterPeriods).to.bignumber.be.eq(new BN(time.duration.weeks('1')));
-			expect(lastFundUpdatedTimestamp).to.bignumber.be.eq(sartTime);
+			expect(increaseRateAfterPeriods).to.bignumber.be.eq(
+				new BN(new BN(Number(time.duration.weeks(1).toString()) / 3))
+			);
+			expect(lastFundUpdatedBlock).to.bignumber.be.eq(startBlock);
+			expect(totalBlocksPerWeek).to.bignumber.be.eq(
+				new BN(Number(time.duration.weeks(1).toString()) / 3)
+			);
 
 			currentPerBlockAmount = currentReleaseRatePerBlock;
 		});
@@ -134,6 +141,10 @@ contract('Vault', (accounts) => {
 
 	describe('addFundReceiverAddress()', () => {
 		before('add fundReceiver', async () => {
+			// grant vaultKeeper role
+			const VAULT_KEEPER = await this.Vault.VAULT_KEEPER();
+			await this.Vault.grantRole(VAULT_KEEPER, vaultKeeper, {from: owner});
+
 			// add fund receiver1
 			await this.Vault.addFundReceiverAddress(receiver1, 9000, {from: owner});
 			await this.Vault.addFundReceiverAddress(receiver2, 1000, {from: owner});
@@ -493,12 +504,12 @@ contract('Vault', (accounts) => {
 	describe('claim()', () => {
 		let currentNonce;
 		before(async () => {
-			const OPERATOR_ROLE = await this.Vault.OPERATOR_ROLE();
-			await this.Vault.grantRole(OPERATOR_ROLE, receiver1);
-			await this.Vault.grantRole(OPERATOR_ROLE, receiver2);
-			await this.Vault.grantRole(OPERATOR_ROLE, receiver3);
+			const VAULT_KEEPER = await this.Vault.VAULT_KEEPER();
+			await this.Vault.grantRole(VAULT_KEEPER, receiver1);
+			await this.Vault.grantRole(VAULT_KEEPER, receiver2);
+			await this.Vault.grantRole(VAULT_KEEPER, receiver3);
 
-			await this.Vault.grantRole(OPERATOR_ROLE, '0x0055f67515c252860fe9b27f6903d44fcfc3a727');
+			await this.Vault.grantRole(VAULT_KEEPER, '0x0055f67515c252860fe9b27f6903d44fcfc3a727');
 
 			// get current nonce of user
 			currentNonce = await this.Vault.userNonce(user1);
@@ -834,12 +845,12 @@ contract('Vault', (accounts) => {
 			receiver2Pendings = await this.Vault.getPendingAccumulatedFunds(receiver2);
 			receiver3Pendings = await this.Vault.getPendingAccumulatedFunds(receiver3);
 
-			const lastFundUpdatedTimestamp = await this.Vault.lastFundUpdatedTimestamp();
+			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
 
 			//update allocated funds
 			await this.Vault.updateAllocatedFunds();
 
-			const lastFundUpdatedTimestampAfter = await this.Vault.lastFundUpdatedTimestamp();
+			const lastFundUpdatedBlockAfter = await this.Vault.lastFundUpdatedBlock();
 
 			receiver1PendingsAfter = await this.Vault.getPendingAccumulatedFunds(receiver1);
 			receiver2PendingsAfter = await this.Vault.getPendingAccumulatedFunds(receiver2);
@@ -891,7 +902,7 @@ contract('Vault', (accounts) => {
 				new BN('1')
 			);
 
-			expect(lastFundUpdatedTimestampAfter.sub(lastFundUpdatedTimestamp)).to.bignumber.be.eq(
+			expect(lastFundUpdatedBlockAfter.sub(lastFundUpdatedBlock)).to.bignumber.be.eq(
 				new BN(time.duration.days('1'))
 			);
 
@@ -921,7 +932,7 @@ contract('Vault', (accounts) => {
 		it('should update the release rates correctly once the period is completed', async () => {
 			const currentReleaseRatePerPeriod = await this.Vault.currentReleaseRatePerPeriod();
 			const currentReleaseRatePerBlock = await this.Vault.currentReleaseRatePerBlock();
-			const startTime = await this.Vault.startTime();
+			const startBlock = await this.Vault.startBlock();
 
 			// complete one period by increasing time. 3 days are already passed
 			await time.increase(time.duration.days('6'));
@@ -931,7 +942,7 @@ contract('Vault', (accounts) => {
 
 			const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
 			const currentReleaseRatePerBlockAfter = await this.Vault.currentReleaseRatePerBlock();
-			const startTimeAfter = await this.Vault.startTime();
+			const startBlockAfter = await this.Vault.startBlock();
 
 			// increase currentReleaseRatePerPeriod amount by this amount
 			const increaseAmount = currentReleaseRatePerPeriod.mul(new BN('500')).div(new BN('10000'));
@@ -940,7 +951,7 @@ contract('Vault', (accounts) => {
 			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(
 				currentReleaseRatePerPeriod.div(new BN(time.duration.weeks('1').div(new BN('3'))))
 			);
-			expect(startTime).to.bignumber.be.gt(new BN('0'));
+			expect(startBlock).to.bignumber.be.gt(new BN('0'));
 
 			expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(
 				currentReleaseRatePerPeriod.add(increaseAmount)
@@ -948,20 +959,20 @@ contract('Vault', (accounts) => {
 			expect(currentReleaseRatePerBlockAfter).to.bignumber.be.eq(
 				currentReleaseRatePerPeriodAfter.div(new BN(time.duration.weeks('1').div(new BN('3'))))
 			);
-			expect(startTimeAfter).to.bignumber.be.eq(startTime.add(new BN(time.duration.weeks('1'))));
+			expect(startBlockAfter).to.bignumber.be.eq(startBlock.add(new BN(time.duration.weeks('1'))));
 		});
 
 		it('should update the startime correctly after updating the release rate', async () => {
-			const startTime = await this.Vault.startTime();
+			const startBlock = await this.Vault.startBlock();
 
 			// increase time
 			await time.increase(time.duration.weeks('1'));
 			// update accumulated funds
 			await this.Vault.updateAllocatedFunds();
 
-			const startTimeAfter = await this.Vault.startTime();
+			const startBlockAfter = await this.Vault.startBlock();
 
-			expect(startTimeAfter).to.bignumber.be.eq(startTime.add(new BN(time.duration.weeks('1'))));
+			expect(startBlockAfter).to.bignumber.be.eq(startBlock.add(new BN(time.duration.weeks('1'))));
 		});
 
 		it('should reach the maxReleaseRatePerWeek on time correctly', async () => {
@@ -983,7 +994,7 @@ contract('Vault', (accounts) => {
 			// // 46 weeks required to reach max release rate
 			// console.log('Total no of weeks: ', noOfWeeks.toString());
 
-			const startTime = await this.Vault.startTime();
+			const startBlock = await this.Vault.startBlock();
 
 			// increase time
 			await time.increase(time.duration.weeks('46'));
@@ -995,9 +1006,9 @@ contract('Vault', (accounts) => {
 
 			const currentReleaseRatePerBlock = await this.Vault.currentReleaseRatePerBlock();
 
-			const startTimeAfter = await this.Vault.startTime();
+			const startBlockAfter = await this.Vault.startBlock();
 
-			expect(startTimeAfter).to.bignumber.be.eq(startTime.add(new BN(time.duration.weeks('46'))));
+			expect(startBlockAfter).to.bignumber.be.eq(startBlock.add(new BN(time.duration.weeks('46'))));
 
 			expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(maxReleaseRatePerPeriodAfter);
 			expect(maxReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('1000000'));
@@ -1088,51 +1099,56 @@ contract('Vault', (accounts) => {
 			const increaseRateAfterPeriods = await this.Vault.increaseRateAfterPeriods();
 
 			//update increase period duration
-			await this.Vault.updateIncreaseRateAfterPeriod(time.duration.weeks('4'), {from: owner});
+			await this.Vault.updateIncreaseRateAfterPeriod(4 * blocksPerWeek, {
+				from: owner
+			});
 
 			const increaseRateAfterPeriodsAfter = await this.Vault.increaseRateAfterPeriods();
 
-			expect(increaseRateAfterPeriods).to.bignumber.be.eq(new BN(time.duration.weeks('1')));
-			expect(increaseRateAfterPeriodsAfter).to.bignumber.be.eq(new BN(time.duration.weeks('4')));
+			expect(increaseRateAfterPeriods).to.bignumber.be.eq(new BN(blocksPerWeek));
+			expect(increaseRateAfterPeriodsAfter).to.bignumber.be.eq(new BN(4 * blocksPerWeek));
 		});
 
 		it('should revert when non-owner tries to update the increase period duration', async () => {
 			await expectRevert(
-				this.Vault.updateIncreaseRateAfterPeriod(time.duration.weeks('4'), {from: user1}),
+				this.Vault.updateIncreaseRateAfterPeriod(blocksPerWeek, {from: user1}),
 				'Vault: ONLY_ADMIN_CAN_CALL'
 			);
 		});
 
 		it('should revert when owner tries to update the increase period duration with already set value', async () => {
 			await expectRevert(
-				this.Vault.updateIncreaseRateAfterPeriod(time.duration.weeks('4'), {from: owner}),
+				this.Vault.updateIncreaseRateAfterPeriod(blocksPerWeek * 4, {from: owner}),
 				'Vault: ALREADY_SET'
 			);
 		});
 	});
 
-	describe('updateBlockTime()', async () => {
-		it('should update the updateBlockTime correctly', async () => {
-			const blockTime = await this.Vault.blockTime();
+	describe('updateTotalBlocksPerPeriod()', async () => {
+		it('should update the updateTotalBlocksPerPeriod correctly', async () => {
+			const totalBlocksPerPeriod = await this.Vault.totalBlocksPerPeriod();
 
 			//update block time
-			await this.Vault.updateBlockTime('2', {from: owner});
+			await this.Vault.updateTotalBlocksPerPeriod('2', {from: owner});
 
-			const blockTimeAfter = await this.Vault.blockTime();
+			const totalBlocksPerPeriodAfter = await this.Vault.totalBlocksPerPeriod();
 
-			expect(blockTime).to.bignumber.be.eq(new BN('3'));
-			expect(blockTimeAfter).to.bignumber.be.eq(new BN('2'));
+			expect(totalBlocksPerPeriod).to.bignumber.be.eq(new BN('3'));
+			expect(totalBlocksPerPeriodAfter).to.bignumber.be.eq(new BN('2'));
 		});
 
 		it('should revert when non-owner tries to update the block time', async () => {
 			await expectRevert(
-				this.Vault.updateBlockTime('7', {from: user1}),
+				this.Vault.updateTotalBlocksPerPeriod('7', {from: user1}),
 				'Vault: ONLY_ADMIN_CAN_CALL'
 			);
 		});
 
 		it('should revert when owner tries to update the increase period duration with already set value', async () => {
-			await expectRevert(this.Vault.updateBlockTime('2', {from: owner}), 'Vault: ALREADY_SET');
+			await expectRevert(
+				this.Vault.updateTotalBlocksPerPeriod('2', {from: owner}),
+				'Vault: ALREADY_SET'
+			);
 		});
 	});
 
@@ -1159,14 +1175,14 @@ contract('Vault', (accounts) => {
 
 		it('should revert when non-admin tries to claim all the tokens', async () => {
 			await expectRevert(
-				this.Vault.claimAllTokens(owner, this.LacToken.address, {from: minter}),
+				this.Vault.claimAllTokens(owner, this.SampleToken.address, {from: minter}),
 				'Vault: ONLY_ADMIN_CAN_CALL'
 			);
 		});
 
 		it('should revert when admin tries to claim all the tokens to zero user address', async () => {
 			await expectRevert(
-				this.Vault.claimAllTokens(ZERO_ADDRESS, this.LacToken.address, {from: owner}),
+				this.Vault.claimAllTokens(ZERO_ADDRESS, this.SampleToken.address, {from: owner}),
 				'Vault: INVALID_USER_ADDRESS'
 			);
 		});
@@ -1193,7 +1209,9 @@ contract('Vault', (accounts) => {
 			const minterTokenBalBefore = await this.SampleToken.balanceOf(minter);
 
 			// claim all tokens
-			await this.Vault.claimTokens(minter, this.SampleToken.address, ether('4'), {from: owner});
+			await this.Vault.claimTokens(minter, this.SampleToken.address, ether('4'), {
+				from: owner
+			});
 
 			const vaultTokenBalAfter = await this.SampleToken.balanceOf(this.Vault.address);
 			const minterTokenBalAfter = await this.SampleToken.balanceOf(minter);
@@ -1213,7 +1231,9 @@ contract('Vault', (accounts) => {
 
 		it('should revert when admin tries to claim  given no. of the tokens to zero user address', async () => {
 			await expectRevert(
-				this.Vault.claimTokens(ZERO_ADDRESS, this.SampleToken.address, ether('4'), {from: owner}),
+				this.Vault.claimTokens(ZERO_ADDRESS, this.SampleToken.address, ether('4'), {
+					from: owner
+				}),
 				'Vault: INVALID_USER_ADDRESS'
 			);
 		});
@@ -1302,7 +1322,7 @@ contract('Vault', (accounts) => {
 	describe('getMultiplier()', async () => {
 		it('should get the multiplier correctly', async () => {
 			const multiplier = await this.Vault.getMultiplier();
-			const lastFundUpdatedTimestamp = await this.Vault.lastFundUpdatedTimestamp();
+			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
 
 			// increase time by 6 seconds
 			await time.increase(time.duration.seconds('6'));
@@ -1313,7 +1333,7 @@ contract('Vault', (accounts) => {
 
 			expect(multiplier).to.bignumber.be.eq(new BN('0'));
 			expect(multiplierAfter).to.bignumber.be.eq(
-				currentTime.sub(lastFundUpdatedTimestamp).div(new BN('2'))
+				currentTime.sub(lastFundUpdatedBlock).div(new BN('2'))
 			);
 		});
 	});
