@@ -106,7 +106,13 @@ contract Vault is
    ======================== Events ====================================
    =======================================================================
  	*/
-	event Claimed(address account, address receiver, uint256 amount, uint256 timestamp);
+	event Claimed(
+		address account,
+		address receiver,
+		uint256 amount,
+		uint256 timestamp,
+		uint256 referralId
+	);
 
 	/*
    =======================================================================
@@ -129,11 +135,13 @@ contract Vault is
 	 * @notice This method allows operators to claim the specified amount of LAC tokens from the fundReceiver
 	 * @param  _amount - indicates the amount of tokens to claim
 	 * @param _receiver - indicates the fund receiver address from which funds to claim
+	 * @param _referenceNumber - indicates the unique reference number for claim
 	 * @param _signature - indicates the singature for claiming the tokens
 	 */
 	function claim(
 		uint256 _amount,
 		address _receiver,
+		uint256 _referenceNumber,
 		bytes calldata _signature
 	) external virtual nonReentrant {
 		(bool isExists, ) = LacTokenUtils.isAddressExists(fundReceiversList, _receiver);
@@ -147,7 +155,7 @@ contract Vault is
 			'Vault: INSUFFICIENT_AMOUNT'
 		);
 		require(
-			_verify(_hash(_amount, _receiver, userNonce[msg.sender]), _signature),
+			_verify(_hash(_amount, _receiver, userNonce[msg.sender], _referenceNumber), _signature),
 			'Vault: INVALID_SIGNATURE'
 		);
 
@@ -158,7 +166,7 @@ contract Vault is
 		//update user nonce
 		userNonce[msg.sender] += 1;
 
-		emit Claimed(msg.sender, _receiver, _amount, block.timestamp);
+		emit Claimed(msg.sender, _receiver, _amount, block.timestamp, _referenceNumber);
 	}
 
 	/**
@@ -443,17 +451,21 @@ contract Vault is
 	function _hash(
 		uint256 _amount,
 		address _receiver,
-		uint256 _nonce
+		uint256 _nonce,
+		uint256 _referenceNumber
 	) internal view returns (bytes32) {
 		return
 			_hashTypedDataV4(
 				keccak256(
 					abi.encode(
-						keccak256('Claim(address account,uint256 amount,address receiver,uint256 nonce)'),
+						keccak256(
+							'Claim(address account,uint256 amount,address receiver,uint256 nonce,uint256 referenceNumber)'
+						),
 						msg.sender,
 						_amount,
 						_receiver,
-						_nonce
+						_nonce,
+						_referenceNumber
 					)
 				)
 			);

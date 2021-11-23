@@ -26,6 +26,7 @@ async function createSignature(
 	claimAmount,
 	nonceValue,
 	receiverAddress,
+	referenceNumberValue,
 	contractAddress,
 	chainId
 ) {
@@ -42,7 +43,8 @@ async function createSignature(
 					{name: 'account', type: 'address'},
 					{name: 'amount', type: 'uint256'},
 					{name: 'receiver', type: 'address'},
-					{name: 'nonce', type: 'uint256'}
+					{name: 'nonce', type: 'uint256'},
+					{name: 'referenceNumber', type: 'uint256'}
 				]
 			},
 			domain: {
@@ -56,7 +58,8 @@ async function createSignature(
 				account: userAddress,
 				amount: claimAmount,
 				receiver: receiverAddress,
-				nonce: nonceValue
+				nonce: nonceValue,
+				referenceNumber: referenceNumberValue
 			}
 		}
 	};
@@ -514,6 +517,7 @@ contract('Vault', (accounts) => {
 				receiver1Details.totalAccumulatedFunds,
 				currentNonce,
 				receiver1,
+				5,
 				this.Vault.address,
 				this.chainId
 			);
@@ -521,7 +525,7 @@ contract('Vault', (accounts) => {
 			const user1Bal = await this.LacToken.balanceOf(user1);
 
 			//claim tokens
-			await this.Vault.claim(receiver1Details.totalAccumulatedFunds, receiver1, signature, {
+			await this.Vault.claim(receiver1Details.totalAccumulatedFunds, receiver1, 5, signature, {
 				from: user1
 			});
 
@@ -563,13 +567,14 @@ contract('Vault', (accounts) => {
 				ether('5'),
 				currentNonce,
 				receiver1,
+				6,
 				this.Vault.address,
 				this.chainId
 			);
 
 			//claim tokens
 			await expectRevert(
-				this.Vault.claim(ether('5'), receiver1, signature, {
+				this.Vault.claim(ether('5'), receiver1, 6, signature, {
 					from: user1
 				}),
 				'Vault: INSUFFICIENT_AMOUNT'
@@ -583,13 +588,14 @@ contract('Vault', (accounts) => {
 				ether('0'),
 				currentNonce,
 				receiver1,
+				7,
 				this.Vault.address,
 				this.chainId
 			);
 
 			//claim tokens
 			await expectRevert(
-				this.Vault.claim(ether('0'), receiver1, signature, {
+				this.Vault.claim(ether('0'), receiver1, 7, signature, {
 					from: user1
 				}),
 				'Vault: INSUFFICIENT_AMOUNT'
@@ -603,13 +609,14 @@ contract('Vault', (accounts) => {
 				ether('1'),
 				currentNonce,
 				user2,
+				8,
 				this.Vault.address,
 				this.chainId
 			);
 
 			//claim tokens
 			await expectRevert(
-				this.Vault.claim(ether('1'), user2, signature, {
+				this.Vault.claim(ether('1'), user2, 8, signature, {
 					from: user1
 				}),
 				'Vault: RECEIVER_DOES_NOT_EXISTS'
@@ -623,13 +630,14 @@ contract('Vault', (accounts) => {
 				ether('2'),
 				currentNonce,
 				receiver1,
+				9,
 				this.Vault.address,
 				this.chainId
 			);
 
 			//claim tokens
 			await expectRevert(
-				this.Vault.claim(ether('0.1'), receiver1, signature, {
+				this.Vault.claim(ether('0.1'), receiver1, 9, signature, {
 					from: user1
 				}),
 				'Vault: INVALID_SIGNATURE'
@@ -641,13 +649,14 @@ contract('Vault', (accounts) => {
 				ether('0.1'),
 				currentNonce,
 				receiver1,
+				5,
 				this.Vault.address,
 				this.chainId
 			);
 
 			//claim tokens
 			await expectRevert(
-				this.Vault.claim(ether('0.1'), receiver1, signature, {
+				this.Vault.claim(ether('0.1'), receiver1, 5, signature, {
 					from: user1
 				}),
 				'Vault: INVALID_SIGNATURE'
@@ -659,13 +668,14 @@ contract('Vault', (accounts) => {
 				ether('0.1'),
 				currentNonce,
 				receiver2,
+				6,
 				this.Vault.address,
 				this.chainId
 			);
 
 			//claim tokens
 			await expectRevert(
-				this.Vault.claim(ether('0.1'), receiver1, signature, {
+				this.Vault.claim(ether('0.1'), receiver1, 6, signature, {
 					from: user1
 				}),
 				'Vault: INVALID_SIGNATURE'
@@ -677,13 +687,14 @@ contract('Vault', (accounts) => {
 				ether('0.1'),
 				currentNonce,
 				receiver1,
+				7,
 				this.BlockData.address,
 				this.chainId
 			);
 
 			//claim tokens
 			await expectRevert(
-				this.Vault.claim(ether('0.1'), receiver1, signature, {
+				this.Vault.claim(ether('0.1'), receiver1, 7, signature, {
 					from: user1
 				}),
 				'Vault: INVALID_SIGNATURE'
@@ -695,13 +706,33 @@ contract('Vault', (accounts) => {
 				ether('0.1'),
 				currentNonce,
 				receiver1,
+				8,
 				this.Vault.address,
 				new BN('111')
 			);
 
 			//claim tokens
 			await expectRevert(
-				this.Vault.claim(ether('0.1'), receiver1, signature, {
+				this.Vault.claim(ether('0.1'), receiver1, 8, signature, {
+					from: user1
+				}),
+				'Vault: INVALID_SIGNATURE'
+			);
+
+			signature = await createSignature(
+				this.pk,
+				user1,
+				ether('0.1'),
+				currentNonce,
+				receiver1,
+				8,
+				this.Vault.address,
+				new BN('111')
+			);
+
+			//claim tokens
+			await expectRevert(
+				this.Vault.claim(ether('0.1'), receiver1, 9, signature, {
 					from: user1
 				}),
 				'Vault: INVALID_SIGNATURE'
@@ -715,13 +746,14 @@ contract('Vault', (accounts) => {
 				ether('0.1'),
 				currentNonce,
 				receiver1,
+				8,
 				this.Vault.address,
 				this.chainId
 			);
 
 			//claim tokens
 			await expectRevert(
-				this.Vault.claim(ether('0.1'), receiver1, signature, {
+				this.Vault.claim(ether('0.1'), receiver1, 8, signature, {
 					from: user2
 				}),
 				'Vault: INVALID_SIGNATURE'
@@ -735,13 +767,14 @@ contract('Vault', (accounts) => {
 				ether('0.1'),
 				currentNonce,
 				receiver1,
+				9,
 				this.Vault.address,
 				this.chainId
 			);
 
 			//claim tokens
 			await expectRevert(
-				this.Vault.claim(ether('0.1'), receiver1, signature, {
+				this.Vault.claim(ether('0.1'), receiver1, 9, signature, {
 					from: user1
 				}),
 				'Vault: INVALID_SIGNATURE'
@@ -756,12 +789,13 @@ contract('Vault', (accounts) => {
 				ether('0.2'),
 				currentNonce,
 				receiver1,
+				3,
 				this.Vault.address,
 				this.chainId
 			);
 
 			//claim tokens
-			await this.Vault.claim(ether('0.2'), receiver1, signature, {
+			await this.Vault.claim(ether('0.2'), receiver1, 3, signature, {
 				from: user1
 			});
 
