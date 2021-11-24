@@ -4,6 +4,8 @@ build
 secrets.json
 secrets.test.json
 
+.migrations
+
 .openzeppelin
 coverage
 coverage.json

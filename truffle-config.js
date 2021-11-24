@@ -63,7 +63,7 @@ module.exports = {
 		},
 		bsc_test: {
 			provider: () =>
-				new HDWalletProvider(test_data.mnemonic, 'https://data-seed-prebsc-1-s1.binance.org:8545/'),
+				new HDWalletProvider(test_data.mnemonic, 'https://data-seed-prebsc-2-s3.binance.org:8545/'),
 			network_id: 97,
 			gas: 29000000,
 			gasPrice: 10000000000, // 10 gwei (in wei)
