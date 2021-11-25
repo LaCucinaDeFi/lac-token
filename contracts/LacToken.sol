@@ -13,7 +13,7 @@ contract LacToken is ERC20, Ownable {
    ======================== Constructor/Initializer ======================
    =======================================================================
  	*/
-	constructor() ERC20('LAC', 'LaCucina Token') {
+	constructor() ERC20('LaCucina Token', 'LAC') {
 		allowMinting = true;
 	}
 
