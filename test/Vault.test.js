@@ -82,7 +82,7 @@ contract('Vault', (accounts) => {
 	let currentPerBlockAmount;
 	before('deploy contract', async () => {
 		// deploy LAC token
-		this.LacToken = await LacToken.new('Lacucina Token', 'LAC', minter, ether('500000000'));
+		this.LacToken = await LacToken.new();
 
 		// deploy Sample token
 		this.SampleToken = await SampleToken.new();
@@ -97,6 +97,10 @@ contract('Vault', (accounts) => {
 			blocksPerWeek, // 1 weeks
 			blocksPerWeek
 		]);
+
+		// mint LAC tokens to minter
+
+		await this.LacToken.mint(minter, ether('500000000'));
 
 		this.web3 = new Web3(new Web3.providers.HttpProvider('http://localhost:8555'));
 

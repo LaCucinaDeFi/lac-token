@@ -111,7 +111,7 @@ contract Vault is
 		address receiver,
 		uint256 amount,
 		uint256 timestamp,
-		uint256 referralId
+		uint256 referenceId
 	);
 
 	event ReceiverAdded(address receiver, uint256 share);
