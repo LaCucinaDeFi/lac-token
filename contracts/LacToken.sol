@@ -2,10 +2,10 @@
 
 pragma solidity ^0.8.0;
 
-import '@openzeppelin/contracts/access/AccessControl.sol';
+import '@openzeppelin/contracts/access/Ownable.sol';
 import '@openzeppelin/contracts/token/ERC20/ERC20.sol';
 
-contract LacToken is ERC20, AccessControl {
+contract LacToken is ERC20, Ownable {
 	bool public allowMinting;
 
 	/*
@@ -14,19 +14,13 @@ contract LacToken is ERC20, AccessControl {
    =======================================================================
  	*/
 	constructor() ERC20('LAC', 'LaCucina Token') {
-		_setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
 		allowMinting = true;
-	}
-
-	modifier onlyAdmin() {
-		require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), 'LacToken: ONLY_ADMIN_CAN_CALL');
-		_;
 	}
 
 	/**
 	 * @notice This method allows admin to mint the LAC tokens to account
 	 */
-	function mint(address _account, uint256 _amount) external onlyAdmin {
+	function mint(address _account, uint256 _amount) external onlyOwner {
 		require(allowMinting, 'LacToken: MINTING_DISABLED');
 		require(_amount > 0, 'LacToken: INVALID_AMOUNT');
 
@@ -36,7 +30,7 @@ contract LacToken is ERC20, AccessControl {
 	/**
 	 * @notice This method allows admin to disable the minting of tokens
 	 */
-	function disableMinting() external onlyAdmin {
+	function disableMinting() external onlyOwner {
 		require(allowMinting, 'LacToken: ALREADY_DISABLED');
 		allowMinting = false;
 	}
