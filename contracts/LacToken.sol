@@ -2,36 +2,29 @@
 
 pragma solidity ^0.8.0;
 
-import '@openzeppelin/contracts/access/Ownable.sol';
 import '@openzeppelin/contracts/token/ERC20/ERC20.sol';
 
-contract LacToken is ERC20, Ownable {
-	bool public allowMinting;
-
+contract LacToken is ERC20 {
 	/*
    =======================================================================
    ======================== Constructor/Initializer ======================
    =======================================================================
  	*/
-	constructor() ERC20('LaCucina Token', 'LAC') {
-		allowMinting = true;
-	}
-
 	/**
-	 * @notice This method allows admin to mint the LAC tokens to account
+	 * @param  _name - name of the token
+	 * @param _symbol - symbol of token
+	 * @param _preMintAddress - account address to whoch tokens will be preminted
+	 * @param _preMintAmount - indicates the amount of tokens to pre-mint
 	 */
-	function mint(address _account, uint256 _amount) external onlyOwner {
-		require(allowMinting, 'LacToken: MINTING_DISABLED');
-		require(_amount > 0, 'LacToken: INVALID_AMOUNT');
+	constructor(
+		string memory _name,
+		string memory _symbol,
+		address _preMintAddress,
+		uint256 _preMintAmount
+	) ERC20(_name, _symbol) {
+		require(_preMintAmount > 0, 'LacToken: INVALID_PREMINT_AMOUNT');
 
-		_mint(_account, _amount);
-	}
-
-	/**
-	 * @notice This method allows admin to disable the minting of tokens
-	 */
-	function disableMinting() external onlyOwner {
-		require(allowMinting, 'LacToken: ALREADY_DISABLED');
-		allowMinting = false;
+		//mint preMint amount of tokens to
+		_mint(_preMintAddress, _preMintAmount);
 	}
 }

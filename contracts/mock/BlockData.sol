@@ -10,4 +10,8 @@ contract BlockData {
 	function getTimestamp() external view returns (uint256) {
 		return block.timestamp;
 	}
+
+	function getBlock() external view returns (uint256) {
+		return block.number;
+	}
 }

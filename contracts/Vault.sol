@@ -250,29 +250,32 @@ contract Vault is
 	 * @notice This method updates the totalAllocated funds for each receiver
 	 */
 	function updateAllocatedFunds() public virtual {
-		// update totalAllocated funds for all fundReceivers
-		for (uint256 i = 0; i < fundReceiversList.length; i++) {
-			uint256 funds = getPendingAccumulatedFunds(fundReceiversList[i]);
+		if (getMultiplier() > 0) {
+			// update totalAllocated funds for all fundReceivers
+			for (uint256 i = 0; i < fundReceiversList.length; i++) {
+				uint256 funds = getPendingAccumulatedFunds(fundReceiversList[i]);
 
-			fundReceivers[fundReceiversList[i]].totalAccumulatedFunds += funds;
-		}
-
-		if (_isPeriodCompleted() && currentReleaseRatePerPeriod != maxReleaseRatePerPeriod) {
-			uint256 periodEndBlock = startBlock + increaseRateAfterPeriods;
-
-			// calculate number of periods before last update happened
-			uint256 totalPeriodsCompleted = (block.number - (periodEndBlock)) / increaseRateAfterPeriods;
-
-			_updateReleaseRate();
-
-			for (uint256 i = 0; i < totalPeriodsCompleted; i++) {
-				if (currentReleaseRatePerPeriod == maxReleaseRatePerPeriod) {
-					break;
-				}
-				_updateReleaseRate();
+				fundReceivers[fundReceiversList[i]].totalAccumulatedFunds += funds;
 			}
+
+			if (_isPeriodCompleted() && currentReleaseRatePerPeriod != maxReleaseRatePerPeriod) {
+				uint256 periodEndBlock = startBlock + increaseRateAfterPeriods;
+
+				// calculate number of periods before last update happened
+				uint256 totalPeriodsCompleted = (block.number - (periodEndBlock)) /
+					increaseRateAfterPeriods;
+
+				_updateReleaseRate();
+
+				for (uint256 i = 0; i < totalPeriodsCompleted; i++) {
+					if (currentReleaseRatePerPeriod == maxReleaseRatePerPeriod) {
+						break;
+					}
+					_updateReleaseRate();
+				}
+			}
+			lastFundUpdatedBlock = block.number;
 		}
-		lastFundUpdatedBlock = block.number;
 	}
 
 	function updateMaxReleaseRatePerPeriod(uint256 _maxReleaseRate) external virtual onlyAdmin {
