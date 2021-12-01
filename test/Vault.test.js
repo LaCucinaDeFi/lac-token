@@ -78,7 +78,7 @@ contract('Vault', (accounts) => {
 	const receiver2 = accounts[6];
 	const receiver3 = accounts[7];
 	const vaultKeeper = accounts[8];
-	const blocksPerWeek = Number(time.duration.days('1')) / 3;
+	const blocksPerWeek = Number(time.duration.hours('1')) / 3;
 	let currentPerBlockAmount;
 	before('deploy contract', async () => {
 		// deploy LAC token
@@ -94,7 +94,7 @@ contract('Vault', (accounts) => {
 			ether('100000'),
 			ether('1000000'),
 			500, // 5%
-			blocksPerWeek, // 1 days
+			blocksPerWeek, // 1 hours
 			blocksPerWeek
 		]);
 
@@ -126,15 +126,15 @@ contract('Vault', (accounts) => {
 
 			expect(startBlock).to.bignumber.be.gt(new BN('0'));
 			expect(currentReleaseRatePerPeriod).to.bignumber.be.eq(ether('100000'));
-			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(new BN('3472222222222222222'));
+			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(new BN('83333333333333333333'));
 			expect(maxReleaseRatePerPeriod).to.bignumber.be.eq(ether('1000000'));
 			expect(increasePercentage).to.bignumber.be.eq(new BN('500'));
 			expect(increaseRateAfterPeriods).to.bignumber.be.eq(
-				new BN(new BN(Number(time.duration.days(1).toString()) / 3))
+				new BN(new BN(Number(time.duration.hours(1).toString()) / 3))
 			);
 			expect(lastFundUpdatedBlock).to.bignumber.be.eq(startBlock);
 			expect(totalBlocksPerWeek).to.bignumber.be.eq(
-				new BN(Number(time.duration.days(1).toString()) / 3)
+				new BN(Number(time.duration.hours(1).toString()) / 3)
 			);
 
 			currentPerBlockAmount = currentReleaseRatePerBlock;
@@ -169,7 +169,7 @@ contract('Vault', (accounts) => {
 
 			expect(fundReceiver1Details.lacShare).to.bignumber.be.eq(new BN('9000'));
 			expect(fundReceiver1Details.totalAccumulatedFunds).to.bignumber.be.eq(
-				new BN('3472222222222222222')
+				new BN('83333333333333333333')
 			);
 
 			expect(fundReceiver2Details.lacShare).to.bignumber.be.eq(new BN('1000'));
@@ -219,9 +219,6 @@ contract('Vault', (accounts) => {
 			// // add third fund receiver
 			await this.Vault.shrinkReceiver(receiver1, receiver3, 1000, {from: owner});
 
-			const endBlock = await this.BlockData.getBlock();
-			console.log('endBlock: ', endBlock.toString());
-
 			const receiver1PendingsAfter = await this.Vault.getPendingAccumulatedFunds(receiver1);
 			const receiver2PendingsAfter = await this.Vault.getPendingAccumulatedFunds(receiver2);
 
@@ -245,14 +242,14 @@ contract('Vault', (accounts) => {
 			);
 
 			expect(fundReceiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				fundReceiver1Details.totalAccumulatedFunds
-					.add(receiver1Pendings)
-					.add(receiver1Share)
-					.add(new BN('1'))
+				fundReceiver1Details.totalAccumulatedFunds.add(receiver1Pendings).add(receiver1Share)
 			);
 
 			expect(fundReceiver2DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				fundReceiver2Details.totalAccumulatedFunds.add(receiver2Pendings).add(receiver2Share)
+				fundReceiver2Details.totalAccumulatedFunds
+					.add(receiver2Pendings)
+					.add(receiver2Share)
+					.add(new BN('1'))
 			);
 
 			expect(fundReceiver3DetailsAfter.lacShare).to.bignumber.be.eq(new BN('1000'));
@@ -277,8 +274,6 @@ contract('Vault', (accounts) => {
 		before('remove fund receiver', async () => {
 			//update allocated funds
 			await this.Vault.updateAllocatedFunds();
-			const finalBlock = await this.BlockData.getBlock();
-			console.log('finalBlock: ', finalBlock.toString());
 
 			fundReceiver1Details = await this.Vault.fundReceivers(receiver1);
 			fundReceiver2Details = await this.Vault.fundReceivers(receiver2);
@@ -563,7 +558,11 @@ contract('Vault', (accounts) => {
 		it('should revert when user tries to claim more amount that receiver accumulated', async () => {
 			// update allocated funds
 			await this.Vault.updateAllocatedFunds();
-
+			const receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
+			console.log(
+				'receiver1DetailsAfter.totalAccumulatedFunds: ',
+				receiver1DetailsAfter.totalAccumulatedFunds.toString()
+			);
 			// transfer lac tokens to Vault
 			await this.LacToken.transfer(this.Vault.address, ether('50000000'), {
 				from: minter
@@ -573,12 +572,13 @@ contract('Vault', (accounts) => {
 			await this.LacToken.transfer(accounts[9], await this.LacToken.balanceOf(user1), {
 				from: user1
 			});
+			const nonceAfter = await this.Vault.userNonce(user1);
 
 			signature = await createSignature(
 				this.pk,
 				user1,
-				ether('5'),
-				currentNonce,
+				ether('250'),
+				nonceAfter,
 				receiver1,
 				6,
 				this.Vault.address,
@@ -587,7 +587,7 @@ contract('Vault', (accounts) => {
 
 			//claim tokens
 			await expectRevert(
-				this.Vault.claim(ether('5'), receiver1, 6, signature, {
+				this.Vault.claim(ether('500'), receiver1, 6, signature, {
 					from: user1
 				}),
 				'Vault: INSUFFICIENT_AMOUNT'
@@ -843,7 +843,7 @@ contract('Vault', (accounts) => {
 
 			const currentBlock = await this.BlockData.getBlock();
 			//get total blocks after last update
-			const totalBlocks = new BN(5); //new BN(new BN(time.duration.days('1')).div(new BN('3')));
+			const totalBlocks = new BN(5); //new BN(new BN(time.duration.hours('1')).div(new BN('3')));
 
 			//increase time by 5 blocks,  per day = 28800 Number(57600)
 			await time.advanceBlockTo(currentBlock.add(totalBlocks));
@@ -937,9 +937,9 @@ contract('Vault', (accounts) => {
 			const currentReleaseRatePerBlock = await this.Vault.currentReleaseRatePerBlock();
 			const startBlock = await this.Vault.startBlock();
 			const currentBlock = await this.BlockData.getBlock();
-			const totalBlocks = new BN(time.duration.days('1') / 3);
+			const totalBlocks = new BN(time.duration.hours('1') / 3);
 
-			// complete one period by increasing time. 3 days are already passed
+			// complete one period by increasing time. 3 hours are already passed
 			await time.advanceBlockTo(currentBlock.add(totalBlocks));
 
 			// update allocated funds
@@ -954,7 +954,7 @@ contract('Vault', (accounts) => {
 
 			expect(currentReleaseRatePerPeriod).to.bignumber.be.eq(ether('100000'));
 			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(
-				currentReleaseRatePerPeriod.div(new BN(time.duration.days('1').div(new BN('3'))))
+				currentReleaseRatePerPeriod.div(new BN(time.duration.hours('1').div(new BN('3'))))
 			);
 			expect(startBlock).to.bignumber.be.gt(new BN('0'));
 
@@ -962,10 +962,10 @@ contract('Vault', (accounts) => {
 				currentReleaseRatePerPeriod.add(increaseAmount)
 			);
 			expect(currentReleaseRatePerBlockAfter).to.bignumber.be.eq(
-				currentReleaseRatePerPeriodAfter.div(new BN(time.duration.days('1').div(new BN('3'))))
+				currentReleaseRatePerPeriodAfter.div(new BN(time.duration.hours('1').div(new BN('3'))))
 			);
 			expect(startBlockAfter).to.bignumber.be.eq(
-				startBlock.add(new BN(time.duration.days('1') / 3))
+				startBlock.add(new BN(time.duration.hours('1') / 3))
 			);
 		});
 
@@ -975,7 +975,7 @@ contract('Vault', (accounts) => {
 
 			// 	let noOfWeeks = 0;
 			// while (!currentReleaseRatePerPeriod.eq(maxReleaseRatePerPeriod)) {
-			// 	await time.increase(time.duration.days('1'));
+			// 	await time.increase(time.duration.hours('1'));
 
 			// 	// await updateAllocated funds
 			// 	await this.Vault.updateAllocatedFunds();
@@ -985,12 +985,12 @@ contract('Vault', (accounts) => {
 
 			// 	noOfWeeks++;
 			// }
-			// // 46 days required to reach max release rate
-			// console.log('Total no of days: ', noOfWeeks.toString());
+			// // 46 hours required to reach max release rate
+			// console.log('Total no of hours: ', noOfWeeks.toString());
 
 			const startBlock = await this.Vault.startBlock();
 			const currentBlock = await this.BlockData.getBlock();
-			const totalBlocks = new BN(time.duration.days('46') / 3);
+			const totalBlocks = new BN(time.duration.hours('47') / 3);
 
 			// increase time
 			await time.advanceBlockTo(currentBlock.add(totalBlocks));
@@ -1004,12 +1004,14 @@ contract('Vault', (accounts) => {
 
 			const startBlockAfter = await this.Vault.startBlock();
 
-			expect(startBlockAfter).to.bignumber.be.eq(startBlock.add(new BN(time.duration.days('46'))));
+			expect(startBlockAfter).to.bignumber.be.eq(
+				startBlock.add(new BN(time.duration.hours('47') / 3))
+			);
 
 			expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(maxReleaseRatePerPeriodAfter);
 			expect(maxReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('1000000'));
 			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(
-				maxReleaseRatePerPeriodAfter.div(new BN(time.duration.days('1')).div(new BN('3')))
+				maxReleaseRatePerPeriodAfter.div(new BN(time.duration.hours('1') / 3))
 			);
 		});
 
@@ -1019,7 +1021,7 @@ contract('Vault', (accounts) => {
 			const currentReleaseRatePerBlock = await this.Vault.currentReleaseRatePerBlock();
 
 			const currentBlock = await this.BlockData.getBlock();
-			const totalBlocks = new BN(time.duration.days('1') / 3);
+			const totalBlocks = new BN(time.duration.hours('1') / 3);
 
 			// increase time
 			await time.advanceBlockTo(currentBlock.add(totalBlocks));
@@ -1128,11 +1130,11 @@ contract('Vault', (accounts) => {
 			const totalBlocksPerPeriod = await this.Vault.totalBlocksPerPeriod();
 
 			//update block time
-			await this.Vault.updateTotalBlocksPerPeriod('2', {from: owner});
+			await this.Vault.updateTotalBlocksPerPeriod(2, {from: owner});
 
 			const totalBlocksPerPeriodAfter = await this.Vault.totalBlocksPerPeriod();
 
-			expect(totalBlocksPerPeriod).to.bignumber.be.eq(new BN('3'));
+			expect(totalBlocksPerPeriod).to.bignumber.be.eq(new BN('1200'));
 			expect(totalBlocksPerPeriodAfter).to.bignumber.be.eq(new BN('2'));
 		});
 
@@ -1329,13 +1331,13 @@ contract('Vault', (accounts) => {
 			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
 
 			// increase time by 6 seconds
-			await time.advanceBlockTo(currentBlock.add('2'));
+			await time.advanceBlockTo(currentBlock.add(new BN('2')));
 
 			const multiplierAfter = await this.Vault.getMultiplier();
 
-			expect(currentBlock).to.bignumber.be.eq(lastFundUpdatedBlock);
-			expect(multiplier).to.bignumber.be.eq(new BN('0'));
-			expect(multiplierAfter).to.bignumber.be.eq(new BN('2'));
+			expect(currentBlock).to.bignumber.be.eq(lastFundUpdatedBlock.add(new BN('1')));
+			expect(multiplier).to.bignumber.be.eq(new BN('1'));
+			expect(multiplierAfter).to.bignumber.be.eq(new BN('3'));
 		});
 	});
 });

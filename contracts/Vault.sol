@@ -454,19 +454,19 @@ contract Vault is
 		startBlock = startBlock + increaseRateAfterPeriods;
 	}
 
-	function _getReleaseRateValues(uint256 currentPerPeriodReleaseRate)
+	function _getReleaseRateValues(uint256 _currentPerPeriodReleaseRate)
 		internal
 		view
 		returns (uint256 perPeriodReleaseRate, uint256 perBlockReleaseRate)
 	{
 		// calculate amount to increase by
-		uint256 increaseAmount = (currentPerPeriodReleaseRate * increasePercentage) / 10000;
+		uint256 increaseAmount = (_currentPerPeriodReleaseRate * increasePercentage) / 10000;
 
-		if ((currentPerPeriodReleaseRate + increaseAmount) > maxReleaseRatePerPeriod) {
+		if ((_currentPerPeriodReleaseRate + increaseAmount) > maxReleaseRatePerPeriod) {
 			// set per period release rate to max release rate in case current release rate exceeds max release rate
 			perPeriodReleaseRate = maxReleaseRatePerPeriod;
 		} else {
-			perPeriodReleaseRate += increaseAmount;
+			perPeriodReleaseRate = _currentPerPeriodReleaseRate + increaseAmount;
 		}
 
 		// update per block release rate
