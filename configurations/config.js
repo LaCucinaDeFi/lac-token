@@ -8,6 +8,16 @@ const LacToken = {
     1111: '0xC2404BC978Fca4fB9a426a041cadfCd4CE4c1086',
 }
 
+const LacOwner = {
+    1: '',
+    3: '',
+    4: '',
+    42: '',
+    56: '0x99f279BC68ba514Fb5df945e71546585FB1Bdc70', // TODO:  Update for mainnet
+    97: '0x99f279BC68ba514Fb5df945e71546585FB1Bdc70',
+    1111: '0x5228fB3C3f88C57723A7F9e4f6119139e030640e',
+}
+
 const VaultParams = {
     1: {},
     3: {},
@@ -69,4 +79,4 @@ const FundRecevers = {
     ]
 }
 
-module.exports = { LacToken, VaultParams, FundRecevers };
+module.exports = { LacToken, LacOwner, VaultParams, FundRecevers };

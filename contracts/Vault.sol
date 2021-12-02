@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 import '@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol';
@@ -32,7 +33,7 @@ contract Vault is
    =======================================================================
  */
 
-	bytes32 public constant OPERATOR_ROLE = keccak256('OPERATOR_ROLE');
+	bytes32 public constant VAULT_KEEPER = keccak256('VAULT_KEEPER');
 
 	/*
    =======================================================================
@@ -43,15 +44,14 @@ contract Vault is
 	IERC20Upgradeable public LacToken;
 
 	uint256 public totalShares;
-	uint256 public startTime;
+	uint256 public startBlock;
 	uint256 public currentReleaseRatePerPeriod;
 	uint256 public currentReleaseRatePerBlock;
 	uint256 public maxReleaseRatePerPeriod;
 	uint256 public increasePercentage;
 	uint256 public increaseRateAfterPeriods;
-	uint256 public lastFundUpdatedTimestamp;
-
-	uint256 public blockTime;
+	uint256 public lastFundUpdatedBlock;
+	uint256 public totalBlocksPerPeriod;
 	uint256 public shareMultiplier;
 	address[] public fundReceiversList;
 
@@ -72,33 +72,33 @@ contract Vault is
 	 */
 	function initialize(
 		string memory _name,
-		string memory _version,
 		address _lacAddress,
 		uint256 _initialReleaseRatePerPeriod,
 		uint256 _maxReleaseRatePerPeriod,
 		uint256 _increasePercent,
-		uint256 _increaseRateAfterPeriod
+		uint256 _increaseRateAfterPeriod,
+		uint256 _totalBlocksPerWeek
 	) external virtual initializer {
 		require(_lacAddress != address(0), 'Vault: INVALID_LAC_ADDRESS');
 		__AccessControl_init();
 		__ReentrancyGuard_init();
-		__EIP712_init(_name, _version);
+		__EIP712_init(_name, getVersionNumber());
 		_setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
 
 		LacToken = IERC20Upgradeable(_lacAddress);
-		blockTime = 3;
 		shareMultiplier = 1e12;
 
 		currentReleaseRatePerPeriod = _initialReleaseRatePerPeriod;
 
-		// calculate per block release rate ex. currentReleaseRatePerPeriod / ( 1 week / blockTime). considering blockTime secs as binance block time
-		currentReleaseRatePerBlock = currentReleaseRatePerPeriod / (1 weeks / blockTime);
+		// calculate per block release rate ex. currentReleaseRatePerPeriod / _totalBlocksPerWeek.
+		currentReleaseRatePerBlock = currentReleaseRatePerPeriod / _totalBlocksPerWeek;
 
 		maxReleaseRatePerPeriod = _maxReleaseRatePerPeriod;
 		increasePercentage = _increasePercent;
 		increaseRateAfterPeriods = _increaseRateAfterPeriod;
-		startTime = block.timestamp;
-		lastFundUpdatedTimestamp = block.timestamp;
+		lastFundUpdatedBlock = block.number;
+		totalBlocksPerPeriod = _totalBlocksPerWeek;
+		startBlock = block.number;
 	}
 
 	/*
@@ -111,9 +111,11 @@ contract Vault is
 		address receiver,
 		uint256 amount,
 		uint256 timestamp,
-		uint256 referralId
+		uint256 referenceId
 	);
 
+	event ReceiverAdded(address receiver, uint256 share);
+	event ReceiverRemoved(address receiver);
 	/*
    =======================================================================
    ======================== Modifiers ====================================
@@ -179,6 +181,8 @@ contract Vault is
 		LacTokenUtils.addAddressInList(fundReceiversList, _account);
 		fundReceivers[_account] = FundReceiver(_share, 0);
 		totalShares += _share;
+
+		emit ReceiverAdded(_account, _share);
 	}
 
 	/**
@@ -194,6 +198,8 @@ contract Vault is
 		totalShares -= fundReceivers[_account].lacShare;
 
 		delete fundReceivers[_account];
+
+		emit ReceiverRemoved(_account);
 	}
 
 	/**
@@ -236,36 +242,40 @@ contract Vault is
 
 		fundReceivers[_existingReceiver].lacShare = currentShare - _newShare;
 		fundReceivers[_newReceiver].lacShare = _newShare;
+
+		emit ReceiverAdded(_newReceiver, _newShare);
 	}
 
 	/**
 	 * @notice This method updates the totalAllocated funds for each receiver
 	 */
 	function updateAllocatedFunds() public virtual {
-		// update totalAllocated funds for all fundReceivers
-		for (uint256 i = 0; i < fundReceiversList.length; i++) {
-			uint256 funds = getPendingAccumulatedFunds(fundReceiversList[i]);
+		if (getMultiplier() > 0) {
+			// update totalAllocated funds for all fundReceivers
+			for (uint256 i = 0; i < fundReceiversList.length; i++) {
+				uint256 funds = getPendingAccumulatedFunds(fundReceiversList[i]);
 
-			fundReceivers[fundReceiversList[i]].totalAccumulatedFunds += funds;
-		}
-
-		if (_isPeriodCompleted() && currentReleaseRatePerPeriod != maxReleaseRatePerPeriod) {
-			uint256 periodEndTime = startTime + increaseRateAfterPeriods;
-
-			// calculate number of periods before last update happened
-			uint256 totalPeriodsCompleted = (block.timestamp - (periodEndTime)) /
-				increaseRateAfterPeriods;
-
-			_updateReleaseRate();
-
-			for (uint256 i = 0; i < totalPeriodsCompleted; i++) {
-				if (currentReleaseRatePerPeriod == maxReleaseRatePerPeriod) {
-					break;
-				}
-				_updateReleaseRate();
+				fundReceivers[fundReceiversList[i]].totalAccumulatedFunds += funds;
 			}
+
+			if (_isPeriodCompleted() && currentReleaseRatePerPeriod != maxReleaseRatePerPeriod) {
+				uint256 periodEndBlock = startBlock + increaseRateAfterPeriods;
+
+				// calculate number of periods before last update happened
+				uint256 totalPeriodsCompleted = (block.number - (periodEndBlock)) /
+					increaseRateAfterPeriods;
+
+				_updateReleaseRate();
+
+				for (uint256 i = 0; i < totalPeriodsCompleted; i++) {
+					if (currentReleaseRatePerPeriod == maxReleaseRatePerPeriod) {
+						break;
+					}
+					_updateReleaseRate();
+				}
+			}
+			lastFundUpdatedBlock = block.number;
 		}
-		lastFundUpdatedTimestamp = block.timestamp;
 	}
 
 	function updateMaxReleaseRatePerPeriod(uint256 _maxReleaseRate) external virtual onlyAdmin {
@@ -283,9 +293,9 @@ contract Vault is
 		increaseRateAfterPeriods = _newPeriods;
 	}
 
-	function updateBlockTime(uint256 _newBlockTime) external virtual onlyAdmin {
-		require(_newBlockTime != blockTime, 'Vault: ALREADY_SET');
-		blockTime = _newBlockTime;
+	function updateTotalBlocksPerPeriod(uint256 _newBlocks) external virtual onlyAdmin {
+		require(_newBlocks != totalBlocksPerPeriod, 'Vault: ALREADY_SET');
+		totalBlocksPerPeriod = _newBlocks;
 	}
 
 	/**
@@ -352,43 +362,59 @@ contract Vault is
 	{
 		if (_isPeriodCompleted()) {
 			uint256 totalBlocks;
-			uint256 periodEndTime = startTime + increaseRateAfterPeriods;
+			uint256 currentPerPeriodRate;
+			uint256 perPeriodReleaseRate;
+			uint256 perBlockReleaseRate;
+			uint256 periodEndBlock = startBlock + increaseRateAfterPeriods;
+
+			// get total blocks before periods completed i.e periodsLastBlock - lastupdated block
+			totalBlocks = periodEndBlock - lastFundUpdatedBlock;
+
+			accumulatedFunds =
+				(currentReleaseRatePerBlock * totalBlocks * getFundReceiverShare(_receiver)) /
+				shareMultiplier;
 
 			// calculate number of periods before last update happened
-			uint256 totalPeriodsCompleted = (block.timestamp - (periodEndTime)) /
-				increaseRateAfterPeriods;
+			uint256 totalPeriodsCompleted = (block.number - (periodEndBlock)) / increaseRateAfterPeriods;
 
 			if (totalPeriodsCompleted > 0) {
-				totalBlocks = (totalPeriodsCompleted * 1 weeks) / blockTime;
-			} else {
-				// total blocks passed in the current period
-				totalBlocks = (block.timestamp - (periodEndTime)) / blockTime;
+				currentPerPeriodRate = currentReleaseRatePerPeriod;
+				do {
+					// get correct release rate according to periods
+					(perPeriodReleaseRate, perBlockReleaseRate) = _getReleaseRateValues(currentPerPeriodRate);
 
-				// get total blocks before periods completed i.e periodsLastTimestamp - lastupdated timestamp
-				totalBlocks += ((periodEndTime) - lastFundUpdatedTimestamp) / blockTime;
+					accumulatedFunds +=
+						(perBlockReleaseRate * increaseRateAfterPeriods * getFundReceiverShare(_receiver)) /
+						shareMultiplier;
+
+					periodEndBlock = periodEndBlock + increaseRateAfterPeriods;
+					currentPerPeriodRate = perPeriodReleaseRate;
+				} while ((block.number - periodEndBlock) > increaseRateAfterPeriods);
+
+				// total blocks passed in the current period
+				totalBlocks = block.number - periodEndBlock;
 
 				if (totalBlocks > 0) {
-					accumulatedFunds =
-						(currentReleaseRatePerBlock * totalBlocks * getFundReceiverShare(_receiver)) /
+					(perPeriodReleaseRate, perBlockReleaseRate) = _getReleaseRateValues(currentPerPeriodRate);
+
+					accumulatedFunds +=
+						(perBlockReleaseRate * totalBlocks * getFundReceiverShare(_receiver)) /
 						shareMultiplier;
-				} else {
-					accumulatedFunds =
-						(currentReleaseRatePerBlock * getFundReceiverShare(_receiver)) /
+				}
+			} else {
+				// total blocks passed in the current period
+				totalBlocks = block.number - periodEndBlock;
+
+				if (totalBlocks > 0) {
+					accumulatedFunds +=
+						(perBlockReleaseRate * totalBlocks * getFundReceiverShare(_receiver)) /
 						shareMultiplier;
 				}
 			}
 		} else {
-			uint256 multiplier = getMultiplier();
-
-			if (multiplier > 0) {
-				accumulatedFunds =
-					(currentReleaseRatePerBlock * multiplier * getFundReceiverShare(_receiver)) /
-					shareMultiplier;
-			} else {
-				accumulatedFunds =
-					(currentReleaseRatePerBlock * getFundReceiverShare(_receiver)) /
-					shareMultiplier;
-			}
+			accumulatedFunds =
+				(currentReleaseRatePerBlock * getMultiplier() * getFundReceiverShare(_receiver)) /
+				shareMultiplier;
 		}
 	}
 
@@ -396,25 +422,15 @@ contract Vault is
 	 * This method returns the multiplier
 	 */
 	function getMultiplier() public view returns (uint256) {
-		return (block.timestamp - lastFundUpdatedTimestamp) / blockTime;
+		return (block.number - lastFundUpdatedBlock);
 	}
 
 	/**
 	 * @notice Returns the storage, major, minor, and patch version of the contract.
 	 * @return The storage, major, minor, and patch version of the contract.
 	 */
-	function getVersionNumber()
-		external
-		pure
-		virtual
-		override
-		returns (
-			uint256,
-			uint256,
-			uint256
-		)
-	{
-		return (1, 0, 0);
+	function getVersionNumber() public pure virtual override returns (string memory) {
+		return '1.0.0';
 	}
 
 	/*
@@ -422,30 +438,39 @@ contract Vault is
    ======================== Internal Methods =============================
    =======================================================================
  	*/
-	function _isPeriodCompleted() public view returns (bool) {
-		if (block.timestamp > (startTime + increaseRateAfterPeriods)) {
-			return true;
-		}
-		return false;
+	function _isPeriodCompleted() public view returns (bool isCompleted) {
+		if (block.number > (startBlock + increaseRateAfterPeriods)) return true;
 	}
 
 	function _updateReleaseRate() internal {
-		// calculate amount to increase by
-		uint256 increaseAmount = (currentReleaseRatePerPeriod * increasePercentage) / 10000;
-		require(increaseAmount > 0, 'Vault: INVALID_INCREASE_AMOUNT');
+		(uint256 perPeriodReleaseRate, uint256 perBlockReleaseRate) = _getReleaseRateValues(
+			currentReleaseRatePerPeriod
+		);
 
-		if ((currentReleaseRatePerPeriod + increaseAmount) > maxReleaseRatePerPeriod) {
+		currentReleaseRatePerPeriod = perPeriodReleaseRate;
+		currentReleaseRatePerBlock = perBlockReleaseRate;
+
+		// update start time
+		startBlock = startBlock + increaseRateAfterPeriods;
+	}
+
+	function _getReleaseRateValues(uint256 _currentPerPeriodReleaseRate)
+		internal
+		view
+		returns (uint256 perPeriodReleaseRate, uint256 perBlockReleaseRate)
+	{
+		// calculate amount to increase by
+		uint256 increaseAmount = (_currentPerPeriodReleaseRate * increasePercentage) / 10000;
+
+		if ((_currentPerPeriodReleaseRate + increaseAmount) > maxReleaseRatePerPeriod) {
 			// set per period release rate to max release rate in case current release rate exceeds max release rate
-			currentReleaseRatePerPeriod = maxReleaseRatePerPeriod;
+			perPeriodReleaseRate = maxReleaseRatePerPeriod;
 		} else {
-			currentReleaseRatePerPeriod += increaseAmount;
+			perPeriodReleaseRate = _currentPerPeriodReleaseRate + increaseAmount;
 		}
 
 		// update per block release rate
-		currentReleaseRatePerBlock = currentReleaseRatePerPeriod / (1 weeks / blockTime);
-
-		// update start time
-		startTime = startTime + increaseRateAfterPeriods;
+		perBlockReleaseRate = perPeriodReleaseRate / totalBlocksPerPeriod;
 	}
 
 	function _hash(
@@ -472,6 +497,6 @@ contract Vault is
 	}
 
 	function _verify(bytes32 _digest, bytes memory _signature) internal view returns (bool) {
-		return hasRole(OPERATOR_ROLE, ECDSAUpgradeable.recover(_digest, _signature));
+		return hasRole(VAULT_KEEPER, ECDSAUpgradeable.recover(_digest, _signature));
 	}
 }
