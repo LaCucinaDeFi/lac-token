@@ -20,6 +20,10 @@ function getReceiverShare(perBlockAmount, receiverShare, totalShare, totalBlocks
 	return perBlockAmount.mul(totalBlocks).mul(receiverShare).div(totalShare);
 }
 
+function weiToEth(Value) {
+	return Value.div(ether('1'));
+}
+
 async function createSignature(
 	pk,
 	userAddress,
@@ -94,10 +98,10 @@ contract('Vault', (accounts) => {
 			ether('100000'),
 			ether('1000000'),
 			500, // 5%
-			blocksPerWeek, // 1 hours
-			blocksPerWeek
+			blocksPerWeek, // 1 hours = 1200 blocks
+			blocksPerWeek // 1 hours = 1200 blocks
 		]);
-
+		// 1 - 1200/
 		// mint LAC tokens to minter
 		this.web3 = new Web3(new Web3.providers.HttpProvider('http://localhost:8555'));
 
@@ -558,11 +562,7 @@ contract('Vault', (accounts) => {
 		it('should revert when user tries to claim more amount that receiver accumulated', async () => {
 			// update allocated funds
 			await this.Vault.updateAllocatedFunds();
-			const receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
-			console.log(
-				'receiver1DetailsAfter.totalAccumulatedFunds: ',
-				receiver1DetailsAfter.totalAccumulatedFunds.toString()
-			);
+
 			// transfer lac tokens to Vault
 			await this.LacToken.transfer(this.Vault.address, ether('50000000'), {
 				from: minter
@@ -937,17 +937,80 @@ contract('Vault', (accounts) => {
 			const currentReleaseRatePerBlock = await this.Vault.currentReleaseRatePerBlock();
 			const startBlock = await this.Vault.startBlock();
 			const currentBlock = await this.BlockData.getBlock();
-			const totalBlocks = new BN(time.duration.hours('1') / 3);
+			const totalBlocks = new BN(time.duration.hours('2') / 3);
 
+			console.log(
+				'currentReleaseRatePerPeriod: ',
+				weiToEth(currentReleaseRatePerPeriod).toString()
+			);
+			console.log('currentReleaseRatePerBlock: ', weiToEth(currentReleaseRatePerBlock).toString());
+
+			console.log('currentBlock: ', currentBlock.toString());
+			console.log('startBlock: ', startBlock.toString());
+
+			const receiver1Details = await this.Vault.fundReceivers(receiver1);
+			const receiver2Details = await this.Vault.fundReceivers(receiver2);
+			const receiver3Details = await this.Vault.fundReceivers(receiver3);
+
+			console.log(
+				'receiver1Details: ',
+				weiToEth(receiver1Details.totalAccumulatedFunds).toString()
+			);
+			console.log(
+				'receiver2Details: ',
+				weiToEth(receiver2Details.totalAccumulatedFunds).toString()
+			);
+			console.log(
+				'receiver3Details: ',
+				weiToEth(receiver3Details.totalAccumulatedFunds).toString()
+			);
+
+			// increase by 1205 blocks
 			// complete one period by increasing time. 3 hours are already passed
-			await time.advanceBlockTo(currentBlock.add(totalBlocks));
+			await time.advanceBlockTo(currentBlock.add(totalBlocks).add(new BN('5')));
+
+			const currentBlock1 = await this.BlockData.getBlock();
+			console.log('currentBlock1: ', currentBlock1.toString());
 
 			// update allocated funds
 			await this.Vault.updateAllocatedFunds();
 
+			// 1270 - 69 / 1200
 			const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
 			const currentReleaseRatePerBlockAfter = await this.Vault.currentReleaseRatePerBlock();
+
+			console.log(
+				'currentReleaseRatePerPeriodAfter: ',
+				weiToEth(currentReleaseRatePerPeriodAfter).toString()
+			);
+
+			console.log(
+				'currentReleaseRatePerBlockAfter: ',
+				weiToEth(currentReleaseRatePerBlockAfter).toString()
+			);
+
 			const startBlockAfter = await this.Vault.startBlock();
+			console.log('startBlockAfter: ', startBlockAfter.toString());
+
+			const lastFundUpdatedBlockAfter = await this.Vault.lastFundUpdatedBlock();
+			console.log('lastFundUpdatedBlockAfter: ', lastFundUpdatedBlockAfter.toString());
+
+			const receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
+			const receiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);
+			const receiver3DetailsAfter = await this.Vault.fundReceivers(receiver3);
+
+			console.log(
+				'receiver1DetailsAfter: ',
+				weiToEth(receiver1DetailsAfter.totalAccumulatedFunds).toString()
+			);
+			console.log(
+				'receiver2DetailsAfter: ',
+				weiToEth(receiver2DetailsAfter.totalAccumulatedFunds).toString()
+			);
+			console.log(
+				'receiver3DetailsAfter: ',
+				weiToEth(receiver3DetailsAfter.totalAccumulatedFunds).toString()
+			);
 
 			// increase currentReleaseRatePerPeriod amount by this amount
 			const increaseAmount = currentReleaseRatePerPeriod.mul(new BN('500')).div(new BN('10000'));
@@ -958,15 +1021,9 @@ contract('Vault', (accounts) => {
 			);
 			expect(startBlock).to.bignumber.be.gt(new BN('0'));
 
-			expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(
-				currentReleaseRatePerPeriod.add(increaseAmount)
-			);
-			expect(currentReleaseRatePerBlockAfter).to.bignumber.be.eq(
-				currentReleaseRatePerPeriodAfter.div(new BN(time.duration.hours('1').div(new BN('3'))))
-			);
-			expect(startBlockAfter).to.bignumber.be.eq(
-				startBlock.add(new BN(time.duration.hours('1') / 3))
-			);
+			expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('110250'));
+			expect(currentReleaseRatePerBlockAfter).to.bignumber.be.eq(ether('91.875'));
+			expect(startBlockAfter).to.bignumber.be.eq(new BN('2409'));
 		});
 
 		it('should reach the maxReleaseRatePerWeek on time correctly', async () => {
@@ -990,7 +1047,7 @@ contract('Vault', (accounts) => {
 
 			const startBlock = await this.Vault.startBlock();
 			const currentBlock = await this.BlockData.getBlock();
-			const totalBlocks = new BN(time.duration.hours('47') / 3);
+			const totalBlocks = new BN(time.duration.hours('46') / 3);
 
 			// increase time
 			await time.advanceBlockTo(currentBlock.add(totalBlocks));
@@ -1005,7 +1062,7 @@ contract('Vault', (accounts) => {
 			const startBlockAfter = await this.Vault.startBlock();
 
 			expect(startBlockAfter).to.bignumber.be.eq(
-				startBlock.add(new BN(time.duration.hours('47') / 3))
+				startBlock.add(new BN(time.duration.hours('46') / 3))
 			);
 
 			expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(maxReleaseRatePerPeriodAfter);

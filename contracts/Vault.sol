@@ -116,6 +116,12 @@ contract Vault is
 
 	event ReceiverAdded(address receiver, uint256 share);
 	event ReceiverRemoved(address receiver);
+	event ReceiverShareUpdated(address receiver, uint256 newShare);
+	event ReceiverShrinked(address existingReceiver, address newReceiver, uint256 newShare);
+	event maxReleaseRatePerPeriodUpdated(uint256 newPerPeriodRate);
+	event IncreasePercentage(uint256 newPercent);
+	event UpdateTotalBlocksPerPeriod(uint256 newTotalBlocksPerPeriod);
+	event ClaimTokens(address user, address tokenAddress, uint256 amount);
 	/*
    =======================================================================
    ======================== Modifiers ====================================
@@ -219,6 +225,8 @@ contract Vault is
 
 		totalShares = (totalShares - fundReceivers[_receiver].lacShare) + _newShare;
 		fundReceivers[_receiver].lacShare = _newShare;
+
+		emit ReceiverShareUpdated(_receiver, _newShare);
 	}
 
 	/**
@@ -243,7 +251,7 @@ contract Vault is
 		fundReceivers[_existingReceiver].lacShare = currentShare - _newShare;
 		fundReceivers[_newReceiver].lacShare = _newShare;
 
-		emit ReceiverAdded(_newReceiver, _newShare);
+		emit ReceiverShrinked(_existingReceiver, _newReceiver, _newShare);
 	}
 
 	/**
@@ -281,6 +289,8 @@ contract Vault is
 	function updateMaxReleaseRatePerPeriod(uint256 _maxReleaseRate) external virtual onlyAdmin {
 		require(_maxReleaseRate != maxReleaseRatePerPeriod, 'Vault: ALREADY_SET');
 		maxReleaseRatePerPeriod = _maxReleaseRate;
+
+		emit maxReleaseRatePerPeriodUpdated(_maxReleaseRate);
 	}
 
 	function updateIncreasePercentage(uint256 _newPercentage) external virtual onlyAdmin {
@@ -291,11 +301,14 @@ contract Vault is
 	function updateIncreaseRateAfterPeriod(uint256 _newPeriods) external virtual onlyAdmin {
 		require(_newPeriods != increaseRateAfterPeriods, 'Vault: ALREADY_SET');
 		increaseRateAfterPeriods = _newPeriods;
+
+		emit IncreasePercentage(_newPeriods);
 	}
 
 	function updateTotalBlocksPerPeriod(uint256 _newBlocks) external virtual onlyAdmin {
 		require(_newBlocks != totalBlocksPerPeriod, 'Vault: ALREADY_SET');
 		totalBlocksPerPeriod = _newBlocks;
+		emit UpdateTotalBlocksPerPeriod(_newBlocks);
 	}
 
 	/**
@@ -311,6 +324,8 @@ contract Vault is
 		uint256 tokenAmount = IERC20Upgradeable(_tokenAddress).balanceOf(address(this));
 
 		require(IERC20Upgradeable(_tokenAddress).transfer(_user, tokenAmount));
+
+		emit ClaimTokens(_user, _tokenAddress, tokenAmount);
 	}
 
 	/**
@@ -331,6 +346,8 @@ contract Vault is
 		require(_amount > 0 && tokenAmount >= _amount, 'Vault: INSUFFICIENT_BALANCE');
 
 		require(IERC20Upgradeable(_tokenAddress).transfer(_user, _amount));
+
+		emit ClaimTokens(_user, _tokenAddress, _amount);
 	}
 
 	/*
@@ -390,26 +407,17 @@ contract Vault is
 					periodEndBlock = periodEndBlock + increaseRateAfterPeriods;
 					currentPerPeriodRate = perPeriodReleaseRate;
 				} while ((block.number - periodEndBlock) > increaseRateAfterPeriods);
+			}
 
-				// total blocks passed in the current period
-				totalBlocks = block.number - periodEndBlock;
+			// total blocks passed in the current period
+			totalBlocks = block.number - periodEndBlock;
 
-				if (totalBlocks > 0) {
-					(perPeriodReleaseRate, perBlockReleaseRate) = _getReleaseRateValues(currentPerPeriodRate);
+			if (totalBlocks > 0) {
+				(perPeriodReleaseRate, perBlockReleaseRate) = _getReleaseRateValues(currentPerPeriodRate);
 
-					accumulatedFunds +=
-						(perBlockReleaseRate * totalBlocks * getFundReceiverShare(_receiver)) /
-						shareMultiplier;
-				}
-			} else {
-				// total blocks passed in the current period
-				totalBlocks = block.number - periodEndBlock;
-
-				if (totalBlocks > 0) {
-					accumulatedFunds +=
-						(perBlockReleaseRate * totalBlocks * getFundReceiverShare(_receiver)) /
-						shareMultiplier;
-				}
+				accumulatedFunds +=
+					(perBlockReleaseRate * totalBlocks * getFundReceiverShare(_receiver)) /
+					shareMultiplier;
 			}
 		} else {
 			accumulatedFunds =
