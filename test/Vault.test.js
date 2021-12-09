@@ -72,7 +72,7 @@ async function createSignature(
 	return signature;
 }
 
-contract.skip('Vault', (accounts) => {
+contract.only('Vault', (accounts) => {
 	const owner = accounts[0];
 	const minter = accounts[1];
 	const user1 = accounts[2];
@@ -128,7 +128,7 @@ contract.skip('Vault', (accounts) => {
 			console.log('currentReleaseRatePerBlock: ', currentReleaseRatePerBlock.toString());
 			expect(lacTokenAddress).to.be.eq(this.LacToken.address);
 
-			expect(startBlock).to.bignumber.be.gt(new BN('0'));
+			expect(startBlock).to.bignumber.be.eq(new BN('0'));
 			expect(currentReleaseRatePerPeriod).to.bignumber.be.eq(ether('100000'));
 			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(new BN('83333333333333333333'));
 			expect(maxReleaseRatePerPeriod).to.bignumber.be.eq(ether('1000000'));
@@ -145,14 +145,47 @@ contract.skip('Vault', (accounts) => {
 		});
 	});
 
-	describe('addFundReceiverAddress()', () => {
-		before('add fundReceiver', async () => {
-			// grant vaultKeeper role
-			const VAULT_KEEPER = await this.Vault.VAULT_KEEPER();
-			await this.Vault.grantRole(VAULT_KEEPER, vaultKeeper, {from: owner});
-
+	describe('setup()', () => {
+		before('', async () => {
 			// add fund receiver1 and receiver2
-			await this.Vault.setup([receiver1, receiver2], [9000, 1000], {from: owner});
+			await this.Vault.setup([receiver1], [9000], {from: owner});
+		});
+		it('should setup the vault correctly', async () => {
+			const currentBlock = await this.BlockData.getBlock();
+			const startBlock = await this.Vault.startBlock();
+			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
+			const fundReceiver1 = await this.Vault.fundReceiversList(0);
+			const totalShares = await this.Vault.totalShares();
+			const totalReceivers = await this.Vault.getTotalFundReceivers();
+			const isSetup = await this.Vault.isSetup();
+
+			expect(startBlock).to.bignumber.be.eq(currentBlock);
+			expect(lastFundUpdatedBlock).to.bignumber.be.eq(currentBlock);
+			expect(fundReceiver1).to.be.eq(receiver1);
+			expect(isSetup).to.be.eq(true);
+			expect(totalShares).to.bignumber.be.eq(new BN('9000'));
+			expect(totalReceivers).to.bignumber.be.eq(new BN('1'));
+		});
+
+		it('should revert when non-admin tries to add setup vault', async () => {
+			await expectRevert(
+				this.Vault.setup([receiver1], [9000], {from: user1}),
+				'Vault: ONLY_ADMIN_CAN_CALL'
+			);
+		});
+
+		it('should revert when admin tries to add setup vault again', async () => {
+			await expectRevert(
+				this.Vault.setup([receiver2], [1000], {from: owner}),
+				'Vault: ALREADY_SETUP_DONE'
+			);
+		});
+	});
+
+	describe('addFundReceivers()', () => {
+		before('add fundReceiver', async () => {
+			// add fund receiver1 and receiver2
+			await this.Vault.addFundReceivers([receiver2], [1000], {from: owner});
 		});
 
 		it('should add fund receivers correctly', async () => {
@@ -172,7 +205,7 @@ contract.skip('Vault', (accounts) => {
 
 			expect(fundReceiver1Details.lacShare).to.bignumber.be.eq(new BN('9000'));
 			expect(fundReceiver1Details.totalAccumulatedFunds).to.bignumber.be.eq(
-				new BN('83333333333333333333')
+				new BN('249999999999999999999')
 			);
 
 			expect(fundReceiver2Details.lacShare).to.bignumber.be.eq(new BN('1000'));
@@ -186,21 +219,21 @@ contract.skip('Vault', (accounts) => {
 
 		it('should revert when non-admin tries to add the fund receiver', async () => {
 			await expectRevert(
-				this.Vault.addFundReceiverAddress(receiver3, 1000, {from: minter}),
+				this.Vault.addFundReceivers([receiver3], [1000], {from: minter}),
 				'Vault: ONLY_ADMIN_CAN_CALL'
 			);
 		});
 
 		it('should revert when admin tries to add the zero address as fund receiver', async () => {
 			await expectRevert(
-				this.Vault.addFundReceiverAddress(ZERO_ADDRESS, 1000, {from: owner}),
+				this.Vault.addFundReceivers([ZERO_ADDRESS], [1000], {from: owner}),
 				'LacTokenUtils: CANNOT_ADD_ZERO_ADDRESS'
 			);
 		});
 
 		it('should revert when admin tries to add the already existing fund receiver', async () => {
 			await expectRevert(
-				this.Vault.addFundReceiverAddress(receiver1, 1000, {from: owner}),
+				this.Vault.addFundReceivers([receiver1], [1000], {from: owner}),
 				'LacTokenUtils: ADDRESS_ALREADY_EXISTS'
 			);
 		});
@@ -1022,7 +1055,7 @@ contract.skip('Vault', (accounts) => {
 
 			expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('110250'));
 			expect(currentReleaseRatePerBlockAfter).to.bignumber.be.eq(ether('91.875'));
-			expect(startBlockAfter).to.bignumber.be.eq(new BN('2409'));
+			expect(startBlockAfter).to.bignumber.be.eq(new BN('2411'));
 		});
 
 		it('should reach the maxReleaseRatePerWeek on time correctly', async () => {
