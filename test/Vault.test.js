@@ -72,7 +72,7 @@ async function createSignature(
 	return signature;
 }
 
-contract('Vault', (accounts) => {
+contract.skip('Vault', (accounts) => {
 	const owner = accounts[0];
 	const minter = accounts[1];
 	const user1 = accounts[2];
@@ -151,9 +151,8 @@ contract('Vault', (accounts) => {
 			const VAULT_KEEPER = await this.Vault.VAULT_KEEPER();
 			await this.Vault.grantRole(VAULT_KEEPER, vaultKeeper, {from: owner});
 
-			// add fund receiver1
-			await this.Vault.addFundReceiverAddress(receiver1, 9000, {from: owner});
-			await this.Vault.addFundReceiverAddress(receiver2, 1000, {from: owner});
+			// add fund receiver1 and receiver2
+			await this.Vault.setup([receiver1, receiver2], [9000, 1000], {from: owner});
 		});
 
 		it('should add fund receivers correctly', async () => {

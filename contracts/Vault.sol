@@ -54,6 +54,7 @@ contract Vault is
 	uint256 public totalBlocksPerPeriod;
 	uint256 public shareMultiplier;
 	address[] public fundReceiversList;
+	bool public isSetup;
 
 	/// fundReceiver => share percentage
 	mapping(address => FundReceiver) public fundReceivers;
@@ -96,9 +97,7 @@ contract Vault is
 		maxReleaseRatePerPeriod = _maxReleaseRatePerPeriod;
 		increasePercentage = _increasePercent;
 		increaseRateAfterPeriods = _increaseRateAfterPeriod;
-		lastFundUpdatedBlock = block.number;
 		totalBlocksPerPeriod = _totalBlocksPerWeek;
-		startBlock = block.number;
 	}
 
 	/*
@@ -138,6 +137,26 @@ contract Vault is
    ======================== Public Methods ===============================
    =======================================================================
  	*/
+	/**
+	 * @notice This method allows admin to setup the startblock and lastfund updated block and adds the initial receivers
+	 * @param _fundReceivers - indicates the list of receivers
+	 * @param _shares - indicates the list of shares of respective receivers
+	 */
+	function setup(address[] memory _fundReceivers, uint256[] memory _shares) external onlyAdmin {
+		require(!isSetup, 'Vault: ALREADY_SETUP_DONE');
+		require(
+			_fundReceivers.length > 0 && _fundReceivers.length == _shares.length,
+			'Vault: INVALID_DATA'
+		);
+
+		for (uint256 i = 0; i < _fundReceivers.length; i++) {
+			_addFundReceiverAddress(_fundReceivers[i], _shares[i]);
+		}
+
+		lastFundUpdatedBlock = block.number;
+		startBlock = block.number;
+		isSetup = true;
+	}
 
 	/**
 	 * @notice This method allows operators to claim the specified amount of LAC tokens from the fundReceiver
@@ -178,17 +197,25 @@ contract Vault is
 	}
 
 	/**
-	 * @notice This method allows admin to add the allocator address to be able to claim/receive LAC tokens.
-	 * @param _account indicates the address to add. 100 =1%
+	 * @notice This method allows admin to adds the receivers
+	 * @param _fundReceivers - indicates the list of receivers
+	 * @param _shares - indicates the list of shares of respective receivers
 	 */
-	function addFundReceiverAddress(address _account, uint256 _share) external virtual onlyAdmin {
+	function addFundReceivers(address[] memory _fundReceivers, uint256[] memory _shares)
+		external
+		virtual
+		onlyAdmin
+	{
+		require(
+			_fundReceivers.length > 0 && _fundReceivers.length == _shares.length,
+			'Vault: INVALID_DATA'
+		);
+
 		updateAllocatedFunds();
 
-		LacTokenUtils.addAddressInList(fundReceiversList, _account);
-		fundReceivers[_account] = FundReceiver(_share, 0);
-		totalShares += _share;
-
-		emit ReceiverAdded(_account, _share);
+		for (uint256 i = 0; i < _fundReceivers.length; i++) {
+			_addFundReceiverAddress(_fundReceivers[i], _shares[i]);
+		}
 	}
 
 	/**
@@ -446,6 +473,18 @@ contract Vault is
    ======================== Internal Methods =============================
    =======================================================================
  	*/
+	/**
+	 * @notice This method allows admin to add the allocator address to be able to claim/receive LAC tokens.
+	 * @param _account indicates the address to add. 100 =1%
+	 */
+	function _addFundReceiverAddress(address _account, uint256 _share) internal {
+		LacTokenUtils.addAddressInList(fundReceiversList, _account);
+		fundReceivers[_account] = FundReceiver(_share, 0);
+		totalShares += _share;
+
+		emit ReceiverAdded(_account, _share);
+	}
+
 	function _isPeriodCompleted() public view returns (bool isCompleted) {
 		if (block.number > (startBlock + increaseRateAfterPeriods)) return true;
 	}
