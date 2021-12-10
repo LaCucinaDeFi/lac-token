@@ -139,9 +139,9 @@ contract.only('Vault', (accounts) => {
 			const startBlock = await this.Vault.startBlock();
 			const currentReleaseRatePerPeriod = await this.Vault.currentReleaseRatePerPeriod();
 			const currentReleaseRatePerBlock = await this.Vault.currentReleaseRatePerBlock();
-			const maxReleaseRatePerPeriod = await this.Vault.maxReleaseRatePerPeriod();
-			const increasePercentage = await this.Vault.increasePercentage();
-			const increaseRateAfterPeriods = await this.Vault.increaseRateAfterPeriods();
+			const finalReleaseRatePerPeriod = await this.Vault.finalReleaseRatePerPeriod();
+			const changePercentage = await this.Vault.changePercentage();
+			const changeRateAfterPeriod = await this.Vault.changeRateAfterPeriod();
 			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
 			const totalBlocksPerWeek = await this.Vault.totalBlocksPerPeriod();
 
@@ -151,9 +151,9 @@ contract.only('Vault', (accounts) => {
 			expect(startBlock).to.bignumber.be.eq(new BN('0'));
 			expect(currentReleaseRatePerPeriod).to.bignumber.be.eq(ether('100000'));
 			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(new BN('83333333333333333333'));
-			expect(maxReleaseRatePerPeriod).to.bignumber.be.eq(ether('1000000'));
-			expect(increasePercentage).to.bignumber.be.eq(new BN('500'));
-			expect(increaseRateAfterPeriods).to.bignumber.be.eq(
+			expect(finalReleaseRatePerPeriod).to.bignumber.be.eq(ether('1000000'));
+			expect(changePercentage).to.bignumber.be.eq(new BN('500'));
+			expect(changeRateAfterPeriod).to.bignumber.be.eq(
 				new BN(new BN(Number(time.duration.hours(1).toString()) / 3))
 			);
 			expect(lastFundUpdatedBlock).to.bignumber.be.eq(startBlock);
@@ -1058,17 +1058,17 @@ contract.only('Vault', (accounts) => {
 
 		it('should reach the maxReleaseRatePerWeek on time correctly', async () => {
 			let currentReleaseRatePerPeriod = await this.Vault.currentReleaseRatePerPeriod();
-			let maxReleaseRatePerPeriod = await this.Vault.maxReleaseRatePerPeriod();
+			let finalReleaseRatePerPeriod = await this.Vault.finalReleaseRatePerPeriod();
 
 			// 	let noOfWeeks = 0;
-			// while (!currentReleaseRatePerPeriod.eq(maxReleaseRatePerPeriod)) {
+			// while (!currentReleaseRatePerPeriod.eq(finalReleaseRatePerPeriod)) {
 			// 	await time.increase(time.duration.hours('1'));
 
 			// 	// await updateAllocated funds
 			// 	await this.Vault.updateAllocatedFunds();
 
 			// 	currentReleaseRatePerPeriod = await this.Vault.currentReleaseRatePerPeriod();
-			// 	maxReleaseRatePerPeriod = await this.Vault.maxReleaseRatePerPeriod();
+			// 	finalReleaseRatePerPeriod = await this.Vault.finalReleaseRatePerPeriod();
 
 			// 	noOfWeeks++;
 			// }
@@ -1085,7 +1085,7 @@ contract.only('Vault', (accounts) => {
 			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId);
 
 			const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
-			const maxReleaseRatePerPeriodAfter = await this.Vault.maxReleaseRatePerPeriod();
+			const finalReleaseRatePerPeriodAfter = await this.Vault.finalReleaseRatePerPeriod();
 
 			const currentReleaseRatePerBlock = await this.Vault.currentReleaseRatePerBlock();
 
@@ -1095,16 +1095,16 @@ contract.only('Vault', (accounts) => {
 				startBlock.add(new BN(time.duration.hours('46') / 3))
 			);
 
-			expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(maxReleaseRatePerPeriodAfter);
-			expect(maxReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('1000000'));
+			expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(finalReleaseRatePerPeriodAfter);
+			expect(finalReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('1000000'));
 			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(
-				maxReleaseRatePerPeriodAfter.div(new BN(time.duration.hours('1') / 3))
+				finalReleaseRatePerPeriodAfter.div(new BN(time.duration.hours('1') / 3))
 			);
 		});
 
 		it('should not increase the currentReleaseRatePerPeriod after maxReleaRatePerWeek reaches', async () => {
 			const currentReleaseRatePerPeriod = await this.Vault.currentReleaseRatePerPeriod();
-			const maxReleaseRatePerPeriod = await this.Vault.maxReleaseRatePerPeriod();
+			const finalReleaseRatePerPeriod = await this.Vault.finalReleaseRatePerPeriod();
 			const currentReleaseRatePerBlock = await this.Vault.currentReleaseRatePerBlock();
 
 			const currentBlock = await this.BlockData.getBlock();
@@ -1117,26 +1117,26 @@ contract.only('Vault', (accounts) => {
 			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId);
 
 			const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
-			const maxReleaseRatePerPeriodAfter = await this.Vault.maxReleaseRatePerPeriod();
+			const finalReleaseRatePerPeriodAfter = await this.Vault.finalReleaseRatePerPeriod();
 			const currentReleaseRatePerBlockAfter = await this.Vault.currentReleaseRatePerBlock();
 
 			expect(currentReleaseRatePerPeriod).to.bignumber.be.eq(currentReleaseRatePerPeriodAfter);
-			expect(maxReleaseRatePerPeriod).to.bignumber.be.eq(maxReleaseRatePerPeriodAfter);
+			expect(finalReleaseRatePerPeriod).to.bignumber.be.eq(finalReleaseRatePerPeriodAfter);
 			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(currentReleaseRatePerBlockAfter);
 		});
 	});
 
 	describe('updateMaxReleaseRatePerPeriod()', async () => {
-		it('should update the maxReleaseRatePerPeriod correctly', async () => {
-			const maxReleaseRatePerPeriod = await this.Vault.maxReleaseRatePerPeriod();
+		it('should update the finalReleaseRatePerPeriod correctly', async () => {
+			const finalReleaseRatePerPeriod = await this.Vault.finalReleaseRatePerPeriod();
 
 			//update max release rate
 			await this.Vault.updateMaxReleaseRatePerPeriod(ether('20000000'), {from: owner});
 
-			const maxReleaseRatePerPeriodAfter = await this.Vault.maxReleaseRatePerPeriod();
+			const finalReleaseRatePerPeriodAfter = await this.Vault.finalReleaseRatePerPeriod();
 
-			expect(maxReleaseRatePerPeriod).to.bignumber.be.eq(ether('1000000'));
-			expect(maxReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('20000000'));
+			expect(finalReleaseRatePerPeriod).to.bignumber.be.eq(ether('1000000'));
+			expect(finalReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('20000000'));
 		});
 
 		it('should revert when non-owner tries to update the release rate', async () => {
@@ -1156,15 +1156,15 @@ contract.only('Vault', (accounts) => {
 
 	describe('updateIncreasePercentage()', async () => {
 		it('should update the updateIncreasePercentage correctly', async () => {
-			const increasePercentage = await this.Vault.increasePercentage();
+			const changePercentage = await this.Vault.changePercentage();
 
 			//update increase percentage
 			await this.Vault.updateIncreasePercentage('700', {from: owner});
 
-			const increasePercentageAfter = await this.Vault.increasePercentage();
+			const changePercentageAfter = await this.Vault.changePercentage();
 
-			expect(increasePercentage).to.bignumber.be.eq(new BN('500'));
-			expect(increasePercentageAfter).to.bignumber.be.eq(new BN('700'));
+			expect(changePercentage).to.bignumber.be.eq(new BN('500'));
+			expect(changePercentageAfter).to.bignumber.be.eq(new BN('700'));
 		});
 
 		it('should revert when non-owner tries to update the increase percentage', async () => {
@@ -1184,17 +1184,17 @@ contract.only('Vault', (accounts) => {
 
 	describe('updateIncreaseRateAfterPeriod()', async () => {
 		it('should update the updateIncreaseRateAfterPeriod correctly', async () => {
-			const increaseRateAfterPeriods = await this.Vault.increaseRateAfterPeriods();
+			const changeRateAfterPeriod = await this.Vault.changeRateAfterPeriod();
 
 			//update increase period duration
 			await this.Vault.updateIncreaseRateAfterPeriod(4 * blocksPerWeek, {
 				from: owner
 			});
 
-			const increaseRateAfterPeriodsAfter = await this.Vault.increaseRateAfterPeriods();
+			const changeRateAfterPeriodAfter = await this.Vault.changeRateAfterPeriod();
 
-			expect(increaseRateAfterPeriods).to.bignumber.be.eq(new BN(blocksPerWeek));
-			expect(increaseRateAfterPeriodsAfter).to.bignumber.be.eq(new BN(4 * blocksPerWeek));
+			expect(changeRateAfterPeriod).to.bignumber.be.eq(new BN(blocksPerWeek));
+			expect(changeRateAfterPeriodAfter).to.bignumber.be.eq(new BN(4 * blocksPerWeek));
 		});
 
 		it('should revert when non-owner tries to update the increase period duration', async () => {

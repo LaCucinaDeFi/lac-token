@@ -27,21 +27,21 @@ const VaultParams = {
         // TODO: To be defined
         initialRelease: '',
         maxRelease: '',
-        increasePercentage: '',
+        changePercentage: '',
         increasePeriodNumber: '1',
         increasePeriodName: 'weeks'
     },
     97: {
         initialRelease: '2016000', // 10 token per block
         maxRelease: '20160000', // 100 tokens per block
-        increasePercentage: '5', // 5%
+        changePercentage: '5', // 5%
         increasePeriodNumber: '2', // 2 days 
         increasePeriodName: 'days' // 2 days 
     },
     1111: {
         initialRelease: '2016000', // 10 token per block
         maxRelease: '20160000', // 100 tokens per block
-        increasePercentage: '5', // 5%
+        changePercentage: '5', // 5%
         increasePeriodNumber: '2', // 2 days 
         increasePeriodName: 'days' // 2 days 
     },
