@@ -92,7 +92,7 @@ async function createSignature(
 	return signature;
 }
 
-contract.only('Vault', (accounts) => {
+contract('Vault', (accounts) => {
 	const owner = accounts[0];
 	const minter = accounts[1];
 	const user1 = accounts[2];
