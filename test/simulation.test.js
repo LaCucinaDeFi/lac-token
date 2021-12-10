@@ -359,7 +359,7 @@ contract('Inclining Simulation', (accounts) => {
 			await time.advanceBlockTo(blocksToIncrease);
 
 			// // claim 64k tokens
-			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('64000'), receiver1, this.pk, this.chainId);
 
 			// // claim 10.5 tokens
 			await claim(this.Vault, user1, ether('10500'), receiver2, this.pk, this.chainId);
