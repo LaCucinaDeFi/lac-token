@@ -48,7 +48,7 @@ contract Vault is
 	uint256 public currentReleaseRatePerPeriod;
 	uint256 public currentReleaseRatePerBlock;
 	uint256 public finalReleaseRatePerPeriod;
-	uint256 public changePercentage;
+	int256 public changePercentage;
 	uint256 public changeRateAfterPeriod;
 	uint256 public lastFundUpdatedBlock;
 	uint256 public totalBlocksPerPeriod;
@@ -76,7 +76,7 @@ contract Vault is
 		address _lacAddress,
 		uint256 _initialReleaseRatePerPeriod,
 		uint256 _finalReleaseRatePerPeriod,
-		uint256 _changePercentage,
+		int256 _changePercentage,
 		uint256 _changeRateAfterPeriod,
 		uint256 _totalBlocksPerPeriod
 	) external virtual initializer {
@@ -118,7 +118,8 @@ contract Vault is
 	event ReceiverShareUpdated(address receiver, uint256 newShare);
 	event ReceiverShrinked(address existingReceiver, address newReceiver, uint256 newShare);
 	event finalReleaseRatePerPeriodUpdated(uint256 newPerPeriodRate);
-	event IncreasePercentage(uint256 newPercent);
+	event ChangePercentage(int256 newPercent);
+	event ChangeRateAfterPeriod(uint256 newRate);
 	event UpdateTotalBlocksPerPeriod(uint256 newTotalBlocksPerPeriod);
 	event ClaimTokens(address user, address tokenAddress, uint256 amount);
 	/*
@@ -281,23 +282,24 @@ contract Vault is
 		emit ReceiverShrinked(_existingReceiver, _newReceiver, _newShare);
 	}
 
-	function updateMaxReleaseRatePerPeriod(uint256 _maxReleaseRate) external virtual onlyAdmin {
+	function updateFinalReleaseRatePerPeriod(uint256 _maxReleaseRate) external virtual onlyAdmin {
 		require(_maxReleaseRate != finalReleaseRatePerPeriod, 'Vault: ALREADY_SET');
 		finalReleaseRatePerPeriod = _maxReleaseRate;
 
 		emit finalReleaseRatePerPeriodUpdated(_maxReleaseRate);
 	}
 
-	function updateIncreasePercentage(uint256 _newPercentage) external virtual onlyAdmin {
+	function updateChangePercentage(int256 _newPercentage) external virtual onlyAdmin {
 		require(_newPercentage != changePercentage, 'Vault: ALREADY_SET');
 		changePercentage = _newPercentage;
+		emit ChangePercentage(_newPercentage);
 	}
 
-	function updateIncreaseRateAfterPeriod(uint256 _newPeriods) external virtual onlyAdmin {
+	function updateChangeRateAfterPeriod(uint256 _newPeriods) external virtual onlyAdmin {
 		require(_newPeriods != changeRateAfterPeriod, 'Vault: ALREADY_SET');
 		changeRateAfterPeriod = _newPeriods;
 
-		emit IncreasePercentage(_newPeriods);
+		emit ChangeRateAfterPeriod(_newPeriods);
 	}
 
 	function updateTotalBlocksPerPeriod(uint256 _newBlocks) external virtual onlyAdmin {
@@ -393,7 +395,9 @@ contract Vault is
 				currentPerPeriodRate = currentReleaseRatePerPeriod;
 				do {
 					// get correct release rate according to periods
-					(perPeriodReleaseRate, perBlockReleaseRate) = _getReleaseRateValues(currentPerPeriodRate);
+					(perPeriodReleaseRate, perBlockReleaseRate) = _getReleaseRateValues(
+						int256(currentPerPeriodRate)
+					);
 
 					accumulatedFunds +=
 						(perBlockReleaseRate * changeRateAfterPeriod * getFundReceiverShare(_receiver)) /
@@ -408,7 +412,9 @@ contract Vault is
 			totalBlocks = block.number - periodEndBlock;
 
 			if (totalBlocks > 0) {
-				(perPeriodReleaseRate, perBlockReleaseRate) = _getReleaseRateValues(currentPerPeriodRate);
+				(perPeriodReleaseRate, perBlockReleaseRate) = _getReleaseRateValues(
+					int256(currentPerPeriodRate)
+				);
 
 				accumulatedFunds +=
 					(perBlockReleaseRate * totalBlocks * getFundReceiverShare(_receiver)) /
@@ -473,8 +479,7 @@ contract Vault is
 				uint256 periodEndBlock = startBlock + changeRateAfterPeriod;
 
 				// calculate number of periods before last update happened
-				uint256 totalPeriodsCompleted = (block.number - (periodEndBlock)) /
-					changeRateAfterPeriod;
+				uint256 totalPeriodsCompleted = (block.number - (periodEndBlock)) / changeRateAfterPeriod;
 
 				_updateReleaseRate();
 
@@ -491,7 +496,7 @@ contract Vault is
 
 	function _updateReleaseRate() internal {
 		(uint256 perPeriodReleaseRate, uint256 perBlockReleaseRate) = _getReleaseRateValues(
-			currentReleaseRatePerPeriod
+			int256(currentReleaseRatePerPeriod)
 		);
 
 		currentReleaseRatePerPeriod = perPeriodReleaseRate;
@@ -501,19 +506,28 @@ contract Vault is
 		startBlock = startBlock + changeRateAfterPeriod;
 	}
 
-	function _getReleaseRateValues(uint256 _currentPerPeriodReleaseRate)
+	function _getReleaseRateValues(int256 _currentPerPeriodReleaseRate)
 		internal
 		view
 		returns (uint256 perPeriodReleaseRate, uint256 perBlockReleaseRate)
 	{
 		// calculate amount to increase by
-		uint256 increaseAmount = (_currentPerPeriodReleaseRate * changePercentage) / 10000;
+		int256 increaseAmount = (_currentPerPeriodReleaseRate * changePercentage) / 10000;
 
-		if ((_currentPerPeriodReleaseRate + increaseAmount) > finalReleaseRatePerPeriod) {
-			// set per period release rate to max release rate in case current release rate exceeds max release rate
-			perPeriodReleaseRate = finalReleaseRatePerPeriod;
+		if (increaseAmount < 0) {
+			if ((_currentPerPeriodReleaseRate + increaseAmount) < int256(finalReleaseRatePerPeriod)) {
+				// set per period release rate to max release rate in case current release rate exceeds min release rate
+				perPeriodReleaseRate = finalReleaseRatePerPeriod;
+			} else {
+				perPeriodReleaseRate = uint256(_currentPerPeriodReleaseRate + increaseAmount);
+			}
 		} else {
-			perPeriodReleaseRate = _currentPerPeriodReleaseRate + increaseAmount;
+			if ((_currentPerPeriodReleaseRate + increaseAmount) > int256(finalReleaseRatePerPeriod)) {
+				// set per period release rate to max release rate in case current release rate exceeds max release rate
+				perPeriodReleaseRate = finalReleaseRatePerPeriod;
+			} else {
+				perPeriodReleaseRate = uint256(_currentPerPeriodReleaseRate + increaseAmount);
+			}
 		}
 
 		// update per block release rate

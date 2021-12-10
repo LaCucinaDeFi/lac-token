@@ -999,31 +999,14 @@ contract.only('Vault', (accounts) => {
 			// complete one period by increasing time. 3 hours are already passed
 			await time.advanceBlockTo(currentBlock.add(totalBlocks).add(new BN('5')));
 
-			const currentBlock1 = await this.BlockData.getBlock();
-			console.log('currentBlock1: ', currentBlock1.toString());
-
 			// update allocated funds
 			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId);
 
 			// 1270 - 69 / 1200
 			const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
 			const currentReleaseRatePerBlockAfter = await this.Vault.currentReleaseRatePerBlock();
-
-			console.log(
-				'currentReleaseRatePerPeriodAfter: ',
-				weiToEth(currentReleaseRatePerPeriodAfter).toString()
-			);
-
-			console.log(
-				'currentReleaseRatePerBlockAfter: ',
-				weiToEth(currentReleaseRatePerBlockAfter).toString()
-			);
-
 			const startBlockAfter = await this.Vault.startBlock();
 			console.log('startBlockAfter: ', startBlockAfter.toString());
-
-			const lastFundUpdatedBlockAfter = await this.Vault.lastFundUpdatedBlock();
-			console.log('lastFundUpdatedBlockAfter: ', lastFundUpdatedBlockAfter.toString());
 
 			const receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
 			const receiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);
@@ -1126,12 +1109,12 @@ contract.only('Vault', (accounts) => {
 		});
 	});
 
-	describe('updateMaxReleaseRatePerPeriod()', async () => {
+	describe('updateFinalReleaseRatePerPeriod()', async () => {
 		it('should update the finalReleaseRatePerPeriod correctly', async () => {
 			const finalReleaseRatePerPeriod = await this.Vault.finalReleaseRatePerPeriod();
 
 			//update max release rate
-			await this.Vault.updateMaxReleaseRatePerPeriod(ether('20000000'), {from: owner});
+			await this.Vault.updateFinalReleaseRatePerPeriod(ether('20000000'), {from: owner});
 
 			const finalReleaseRatePerPeriodAfter = await this.Vault.finalReleaseRatePerPeriod();
 
@@ -1141,25 +1124,25 @@ contract.only('Vault', (accounts) => {
 
 		it('should revert when non-owner tries to update the release rate', async () => {
 			await expectRevert(
-				this.Vault.updateMaxReleaseRatePerPeriod(ether('2000000'), {from: user1}),
+				this.Vault.updateFinalReleaseRatePerPeriod(ether('2000000'), {from: user1}),
 				'Vault: ONLY_ADMIN_CAN_CALL'
 			);
 		});
 
 		it('should revert when owner tries to update the release rate with already set value', async () => {
 			await expectRevert(
-				this.Vault.updateMaxReleaseRatePerPeriod(ether('20000000'), {from: owner}),
+				this.Vault.updateFinalReleaseRatePerPeriod(ether('20000000'), {from: owner}),
 				'Vault: ALREADY_SET'
 			);
 		});
 	});
 
-	describe('updateIncreasePercentage()', async () => {
-		it('should update the updateIncreasePercentage correctly', async () => {
+	describe('updateChangePercentage()', async () => {
+		it('should update the updateChangePercentage correctly', async () => {
 			const changePercentage = await this.Vault.changePercentage();
 
 			//update increase percentage
-			await this.Vault.updateIncreasePercentage('700', {from: owner});
+			await this.Vault.updateChangePercentage('700', {from: owner});
 
 			const changePercentageAfter = await this.Vault.changePercentage();
 
@@ -1169,25 +1152,25 @@ contract.only('Vault', (accounts) => {
 
 		it('should revert when non-owner tries to update the increase percentage', async () => {
 			await expectRevert(
-				this.Vault.updateIncreasePercentage('700', {from: user1}),
+				this.Vault.updateChangePercentage('700', {from: user1}),
 				'Vault: ONLY_ADMIN_CAN_CALL'
 			);
 		});
 
 		it('should revert when owner tries to update the increase percentage with already set value', async () => {
 			await expectRevert(
-				this.Vault.updateIncreasePercentage('700', {from: owner}),
+				this.Vault.updateChangePercentage('700', {from: owner}),
 				'Vault: ALREADY_SET'
 			);
 		});
 	});
 
-	describe('updateIncreaseRateAfterPeriod()', async () => {
-		it('should update the updateIncreaseRateAfterPeriod correctly', async () => {
+	describe('updateChangeRateAfterPeriod()', async () => {
+		it('should update the updateChangeRateAfterPeriod correctly', async () => {
 			const changeRateAfterPeriod = await this.Vault.changeRateAfterPeriod();
 
 			//update increase period duration
-			await this.Vault.updateIncreaseRateAfterPeriod(4 * blocksPerWeek, {
+			await this.Vault.updateChangeRateAfterPeriod(4 * blocksPerWeek, {
 				from: owner
 			});
 
@@ -1199,14 +1182,14 @@ contract.only('Vault', (accounts) => {
 
 		it('should revert when non-owner tries to update the increase period duration', async () => {
 			await expectRevert(
-				this.Vault.updateIncreaseRateAfterPeriod(blocksPerWeek, {from: user1}),
+				this.Vault.updateChangeRateAfterPeriod(blocksPerWeek, {from: user1}),
 				'Vault: ONLY_ADMIN_CAN_CALL'
 			);
 		});
 
 		it('should revert when owner tries to update the increase period duration with already set value', async () => {
 			await expectRevert(
-				this.Vault.updateIncreaseRateAfterPeriod(blocksPerWeek * 4, {from: owner}),
+				this.Vault.updateChangeRateAfterPeriod(blocksPerWeek * 4, {from: owner}),
 				'Vault: ALREADY_SET'
 			);
 		});
