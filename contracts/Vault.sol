@@ -78,7 +78,7 @@ contract Vault is
 		uint256 _maxReleaseRatePerPeriod,
 		uint256 _increasePercent,
 		uint256 _increaseRateAfterPeriod,
-		uint256 _totalBlocksPerWeek
+		uint256 _totalBlocksPerPeriod
 	) external virtual initializer {
 		require(_lacAddress != address(0), 'Vault: INVALID_LAC_ADDRESS');
 		__AccessControl_init();
@@ -91,13 +91,13 @@ contract Vault is
 
 		currentReleaseRatePerPeriod = _initialReleaseRatePerPeriod;
 
-		// calculate per block release rate ex. currentReleaseRatePerPeriod / _totalBlocksPerWeek.
-		currentReleaseRatePerBlock = currentReleaseRatePerPeriod / _totalBlocksPerWeek;
+		// calculate per block release rate ex. currentReleaseRatePerPeriod / _totalBlocksPerPeriod.
+		currentReleaseRatePerBlock = currentReleaseRatePerPeriod / _totalBlocksPerPeriod;
 
 		maxReleaseRatePerPeriod = _maxReleaseRatePerPeriod;
 		increasePercentage = _increasePercent;
 		increaseRateAfterPeriods = _increaseRateAfterPeriod;
-		totalBlocksPerPeriod = _totalBlocksPerWeek;
+		totalBlocksPerPeriod = _totalBlocksPerPeriod;
 	}
 
 	/*
@@ -175,7 +175,7 @@ contract Vault is
 		require(isExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
 
 		// update allocated funds
-		updateAllocatedFunds();
+		_updateAllocatedFunds();
 
 		require(
 			_amount > 0 && _amount <= fundReceivers[_receiver].totalAccumulatedFunds,
@@ -211,7 +211,7 @@ contract Vault is
 			'Vault: INVALID_DATA'
 		);
 
-		updateAllocatedFunds();
+		_updateAllocatedFunds();
 
 		for (uint256 i = 0; i < _fundReceivers.length; i++) {
 			_addFundReceiverAddress(_fundReceivers[i], _shares[i]);
@@ -223,7 +223,7 @@ contract Vault is
 	 * @param _account indicates the address to remove.
 	 */
 	function removeFundReceiverAddress(address _account) external virtual onlyAdmin {
-		updateAllocatedFunds();
+		_updateAllocatedFunds();
 
 		LacTokenUtils.removeAddressFromList(fundReceiversList, _account);
 
@@ -241,7 +241,7 @@ contract Vault is
 	 * @param _newShare - indicates the new share for the fundReceiver. ex. 100 = 1%
 	 */
 	function updateReceiverShare(address _receiver, uint256 _newShare) external virtual onlyAdmin {
-		updateAllocatedFunds();
+		_updateAllocatedFunds();
 
 		(bool isExists, ) = LacTokenUtils.isAddressExists(fundReceiversList, _receiver);
 
@@ -267,7 +267,7 @@ contract Vault is
 		address _newReceiver,
 		uint256 _newShare
 	) external virtual onlyAdmin {
-		updateAllocatedFunds();
+		_updateAllocatedFunds();
 		(bool isReceiverExists, ) = LacTokenUtils.isAddressExists(fundReceiversList, _existingReceiver);
 		require(isReceiverExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
 
@@ -279,38 +279,6 @@ contract Vault is
 		fundReceivers[_newReceiver].lacShare = _newShare;
 
 		emit ReceiverShrinked(_existingReceiver, _newReceiver, _newShare);
-	}
-
-	/**
-	 * @notice This method updates the totalAllocated funds for each receiver
-	 */
-	function updateAllocatedFunds() public virtual {
-		if (getMultiplier() > 0) {
-			// update totalAllocated funds for all fundReceivers
-			for (uint256 i = 0; i < fundReceiversList.length; i++) {
-				uint256 funds = getPendingAccumulatedFunds(fundReceiversList[i]);
-
-				fundReceivers[fundReceiversList[i]].totalAccumulatedFunds += funds;
-			}
-
-			if (_isPeriodCompleted() && currentReleaseRatePerPeriod != maxReleaseRatePerPeriod) {
-				uint256 periodEndBlock = startBlock + increaseRateAfterPeriods;
-
-				// calculate number of periods before last update happened
-				uint256 totalPeriodsCompleted = (block.number - (periodEndBlock)) /
-					increaseRateAfterPeriods;
-
-				_updateReleaseRate();
-
-				for (uint256 i = 0; i < totalPeriodsCompleted; i++) {
-					if (currentReleaseRatePerPeriod == maxReleaseRatePerPeriod) {
-						break;
-					}
-					_updateReleaseRate();
-				}
-			}
-			lastFundUpdatedBlock = block.number;
-		}
 	}
 
 	function updateMaxReleaseRatePerPeriod(uint256 _maxReleaseRate) external virtual onlyAdmin {
@@ -487,6 +455,38 @@ contract Vault is
 
 	function _isPeriodCompleted() public view returns (bool isCompleted) {
 		if (block.number > (startBlock + increaseRateAfterPeriods)) return true;
+	}
+
+	/**
+	 * @notice This method updates the totalAllocated funds for each receiver
+	 */
+	function _updateAllocatedFunds() internal virtual {
+		if (getMultiplier() > 0) {
+			// update totalAllocated funds for all fundReceivers
+			for (uint256 i = 0; i < fundReceiversList.length; i++) {
+				uint256 funds = getPendingAccumulatedFunds(fundReceiversList[i]);
+
+				fundReceivers[fundReceiversList[i]].totalAccumulatedFunds += funds;
+			}
+
+			if (_isPeriodCompleted() && currentReleaseRatePerPeriod != maxReleaseRatePerPeriod) {
+				uint256 periodEndBlock = startBlock + increaseRateAfterPeriods;
+
+				// calculate number of periods before last update happened
+				uint256 totalPeriodsCompleted = (block.number - (periodEndBlock)) /
+					increaseRateAfterPeriods;
+
+				_updateReleaseRate();
+
+				for (uint256 i = 0; i < totalPeriodsCompleted; i++) {
+					if (currentReleaseRatePerPeriod == maxReleaseRatePerPeriod) {
+						break;
+					}
+					_updateReleaseRate();
+				}
+			}
+			lastFundUpdatedBlock = block.number;
+		}
 	}
 
 	function _updateReleaseRate() internal {

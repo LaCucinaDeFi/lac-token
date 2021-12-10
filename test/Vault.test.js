@@ -24,6 +24,26 @@ function weiToEth(Value) {
 	return Value.div(ether('1'));
 }
 
+async function claim(Vault, user, amount, receiver, pk, chainId) {
+	// should be able to claim with latest nonce
+	const currentNonce = await Vault.userNonce(user);
+
+	signature = await createSignature(
+		pk,
+		user,
+		amount,
+		currentNonce,
+		receiver,
+		3,
+		Vault.address,
+		chainId
+	);
+
+	//claim tokens
+	await Vault.claim(amount, receiver, 3, signature, {
+		from: user
+	});
+}
 async function createSignature(
 	pk,
 	userAddress,
@@ -239,9 +259,6 @@ contract.only('Vault', (accounts) => {
 		});
 
 		it('should allocate funds correctly when new receiver is added', async () => {
-			//update allocated funds
-			await this.Vault.updateAllocatedFunds();
-
 			const currentBlock = await this.BlockData.getBlock();
 			//increase time by 3 blocks per day = 28800 Number(57600)
 			await time.advanceBlockTo(Number(currentBlock.toString()) + Number(3));
@@ -308,9 +325,6 @@ contract.only('Vault', (accounts) => {
 		let fundReceiver3Details;
 
 		before('remove fund receiver', async () => {
-			//update allocated funds
-			await this.Vault.updateAllocatedFunds();
-
 			fundReceiver1Details = await this.Vault.fundReceivers(receiver1);
 			fundReceiver2Details = await this.Vault.fundReceivers(receiver2);
 			fundReceiver3Details = await this.Vault.fundReceivers(receiver3);
@@ -362,10 +376,9 @@ contract.only('Vault', (accounts) => {
 			expect(fundReceiver3DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(new BN('0'));
 			expect(fundReceiver3DetailsAfter.lacShare).to.bignumber.be.eq(new BN('0'));
 
-			//update allocated funds
-			await this.Vault.updateAllocatedFunds();
+			expect(fundReceiver3Details.totalAccumulatedFunds).to.bignumber.be.eq(new BN('0'));
+			expect(fundReceiver3Details.lacShare).to.bignumber.be.eq(new BN('1000'));
 
-			expect(fundReceiver3Details.totalAccumulatedFunds).to.bignumber.be.eq(receiver3hare);
 			expect(fundReceiver1DetailsAfter.lacShare).to.bignumber.be.eq(new BN('8000'));
 
 			const receiver1PendingsAfter = await this.Vault.getPendingAccumulatedFunds(receiver1);
@@ -530,6 +543,19 @@ contract.only('Vault', (accounts) => {
 
 	describe('claim()', () => {
 		let currentNonce;
+		let receiver1Pendings;
+		let receiver2Pendings;
+		let receiver3Pendings;
+		let receiver1PendingsAfter;
+		let receiver2PendingsAfter;
+		let receiver3PendingsAfter;
+
+		let receiver1Details;
+		let receiver2Details;
+		let receiver3Details;
+		let receiver1DetailsAfter;
+		let receiver2DetailsAfter;
+		let receiver3DetailsAfter;
 		before(async () => {
 			const VAULT_KEEPER = await this.Vault.VAULT_KEEPER();
 			await this.Vault.grantRole(VAULT_KEEPER, receiver1);
@@ -543,10 +569,8 @@ contract.only('Vault', (accounts) => {
 		});
 
 		it('should allow user to claim', async () => {
-			//update allocated funds
-			await this.Vault.updateAllocatedFunds();
-
 			const receiver1Details = await this.Vault.fundReceivers(receiver1);
+			const startBlock = await this.Vault.startBlock();
 
 			// transfer lac tokens to Vault
 			await this.LacToken.transfer(this.Vault.address, receiver1Details.totalAccumulatedFunds, {
@@ -566,35 +590,21 @@ contract.only('Vault', (accounts) => {
 
 			const user1Bal = await this.LacToken.balanceOf(user1);
 
-			const receiver1Pendings = await this.Vault.getPendingAccumulatedFunds(receiver1);
-
 			//claim tokens
 			await this.Vault.claim(receiver1Details.totalAccumulatedFunds, receiver1, 5, signature, {
 				from: user1
 			});
 
-			const receiver1Share = getReceiverShare(
-				currentPerBlockAmount,
-				new BN('8000'),
-				new BN('10000'),
-				new BN('2')
-			);
-
 			const user1BalAfter = await this.LacToken.balanceOf(user1);
-			const receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
 			const nonceAfter = await this.Vault.userNonce(user1);
 
 			expect(currentNonce).to.bignumber.be.eq(new BN('0'));
 			expect(nonceAfter).to.bignumber.be.eq(new BN('1'));
 			expect(user1Bal).to.bignumber.be.eq(new BN('0'));
 			expect(user1BalAfter).to.bignumber.be.eq(receiver1Details.totalAccumulatedFunds);
-			expect(receiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(receiver1Share);
 		});
 
 		it('should revert when user tries to claim more amount that receiver accumulated', async () => {
-			// update allocated funds
-			await this.Vault.updateAllocatedFunds();
-
 			// transfer lac tokens to Vault
 			await this.LacToken.transfer(this.Vault.address, ether('50000000'), {
 				from: minter
@@ -609,7 +619,7 @@ contract.only('Vault', (accounts) => {
 			signature = await createSignature(
 				this.pk,
 				user1,
-				ether('250'),
+				ether('1200000'),
 				nonceAfter,
 				receiver1,
 				6,
@@ -619,7 +629,7 @@ contract.only('Vault', (accounts) => {
 
 			//claim tokens
 			await expectRevert(
-				this.Vault.claim(ether('500'), receiver1, 6, signature, {
+				this.Vault.claim(ether('1200000'), receiver1, 6, signature, {
 					from: user1
 				}),
 				'Vault: INSUFFICIENT_AMOUNT'
@@ -847,25 +857,9 @@ contract.only('Vault', (accounts) => {
 			const nonceAfter = await this.Vault.userNonce(user1);
 			expect(nonceAfter).to.bignumber.be.eq(new BN('2'));
 		});
-	});
 
-	describe('updateAllocatedFunds()', () => {
-		let receiver1Pendings;
-		let receiver2Pendings;
-		let receiver3Pendings;
-		let receiver1PendingsAfter;
-		let receiver2PendingsAfter;
-		let receiver3PendingsAfter;
-
-		let receiver1Details;
-		let receiver2Details;
-		let receiver3Details;
-		let receiver1DetailsAfter;
-		let receiver2DetailsAfter;
-		let receiver3DetailsAfter;
 		it('it should update the allocated funds correctly', async () => {
-			//update allocated funds
-			await this.Vault.updateAllocatedFunds();
+			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId);
 
 			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
 
@@ -874,8 +868,9 @@ contract.only('Vault', (accounts) => {
 			receiver3Details = await this.Vault.fundReceivers(receiver3);
 
 			const currentBlock = await this.BlockData.getBlock();
+
 			//get total blocks after last update
-			const totalBlocks = new BN(5); //new BN(new BN(time.duration.hours('1')).div(new BN('3')));
+			const totalBlocks = new BN(5);
 
 			//increase time by 5 blocks,  per day = 28800 Number(57600)
 			await time.advanceBlockTo(currentBlock.add(totalBlocks));
@@ -885,7 +880,7 @@ contract.only('Vault', (accounts) => {
 			receiver3Pendings = await this.Vault.getPendingAccumulatedFunds(receiver3);
 
 			//update allocated funds
-			await this.Vault.updateAllocatedFunds();
+			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId);
 
 			const lastFundUpdatedBlockAfter = await this.Vault.lastFundUpdatedBlock();
 
@@ -954,7 +949,10 @@ contract.only('Vault', (accounts) => {
 			expect(receiver3PendingsAfter).to.bignumber.be.eq(new BN('0'));
 
 			expect(receiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				receiver1Details.totalAccumulatedFunds.add(receiver1Pendings).add(receiver1PerBlockShare)
+				receiver1Details.totalAccumulatedFunds
+					.add(receiver1Pendings)
+					.add(receiver1PerBlockShare)
+					.sub(ether('1'))
 			);
 			expect(receiver2DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
 				receiver2Details.totalAccumulatedFunds.add(receiver2Pendings).add(receiver2PerBlockShare)
@@ -1005,7 +1003,7 @@ contract.only('Vault', (accounts) => {
 			console.log('currentBlock1: ', currentBlock1.toString());
 
 			// update allocated funds
-			await this.Vault.updateAllocatedFunds();
+			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId);
 
 			// 1270 - 69 / 1200
 			const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
@@ -1084,7 +1082,7 @@ contract.only('Vault', (accounts) => {
 			// increase time
 			await time.advanceBlockTo(currentBlock.add(totalBlocks));
 			// await updateAllocated funds
-			await this.Vault.updateAllocatedFunds();
+			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId);
 
 			const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
 			const maxReleaseRatePerPeriodAfter = await this.Vault.maxReleaseRatePerPeriod();
@@ -1116,7 +1114,7 @@ contract.only('Vault', (accounts) => {
 			await time.advanceBlockTo(currentBlock.add(totalBlocks));
 
 			// update accumulated funds
-			await this.Vault.updateAllocatedFunds();
+			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId);
 
 			const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
 			const maxReleaseRatePerPeriodAfter = await this.Vault.maxReleaseRatePerPeriod();
@@ -1375,7 +1373,7 @@ contract.only('Vault', (accounts) => {
 	describe('getPendingAccumulatedFunds()', () => {
 		it('should get the pending accumulated funds correctly', async () => {
 			//update allocated funds
-			await this.Vault.updateAllocatedFunds();
+			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId);
 
 			const currentPerBlockAmount = await this.Vault.currentReleaseRatePerBlock();
 
