@@ -2,88 +2,15 @@ require('chai').should();
 
 const Web3 = require('web3');
 const {expect} = require('chai');
-const {expectRevert, BN, ether, time} = require('@openzeppelin/test-helpers');
-const {deployProxy, upgradeProxy} = require('@openzeppelin/truffle-upgrades');
-const {ZERO_ADDRESS} = require('@openzeppelin/test-helpers/src/constants');
+const {BN, ether, time} = require('@openzeppelin/test-helpers');
+const {deployProxy} = require('@openzeppelin/truffle-upgrades');
 const {PRIVATE_KEY} = require('../secrets.test.json');
-const {signTypedData_v4} = require('eth-sig-util');
+const {claim, createSignature} = require('./helper/helper');
 
 const LacToken = artifacts.require('LacToken');
 const Vault = artifacts.require('Vault');
 const BlockData = artifacts.require('BlockData');
 const SampleToken = artifacts.require('SampleToken');
-
-const name = 'Vault';
-const version = '1.0.0';
-
-async function claim(Vault, user, amount, receiver, pk, chainId) {
-	// should be able to claim with latest nonce
-	const currentNonce = await Vault.userNonce(user);
-
-	signature = await createSignature(
-		pk,
-		user,
-		amount,
-		currentNonce,
-		receiver,
-		3,
-		Vault.address,
-		chainId
-	);
-
-	//claim tokens
-	await Vault.claim(amount, receiver, 3, signature, {
-		from: user
-	});
-}
-
-async function createSignature(
-	pk,
-	userAddress,
-	claimAmount,
-	nonceValue,
-	receiverAddress,
-	referenceNumberValue,
-	contractAddress,
-	chainId
-) {
-	const typedMessage = {
-		data: {
-			types: {
-				EIP712Domain: [
-					{name: 'name', type: 'string'},
-					{name: 'version', type: 'string'},
-					{name: 'chainId', type: 'uint256'},
-					{name: 'verifyingContract', type: 'address'}
-				],
-				Claim: [
-					{name: 'account', type: 'address'},
-					{name: 'amount', type: 'uint256'},
-					{name: 'receiver', type: 'address'},
-					{name: 'nonce', type: 'uint256'},
-					{name: 'referenceNumber', type: 'uint256'}
-				]
-			},
-			domain: {
-				name,
-				version,
-				chainId,
-				verifyingContract: contractAddress
-			},
-			primaryType: 'Claim',
-			message: {
-				account: userAddress,
-				amount: claimAmount,
-				receiver: receiverAddress,
-				nonce: nonceValue,
-				referenceNumber: referenceNumberValue
-			}
-		}
-	};
-
-	signature = await signTypedData_v4(pk, typedMessage);
-	return signature;
-}
 
 contract('Inclining Simulation', (accounts) => {
 	const owner = accounts[0];
@@ -91,9 +18,6 @@ contract('Inclining Simulation', (accounts) => {
 	const user1 = accounts[2];
 	const user2 = accounts[3];
 	const user3 = accounts[4];
-	const receiver1 = accounts[5];
-	const receiver2 = accounts[6];
-	const receiver3 = accounts[7];
 	const vaultKeeper = accounts[8];
 	const blocksPerWeek = 1000; //Number(time.duration.hours('1')) / 3;
 	let currentPerBlockAmount;
@@ -139,21 +63,13 @@ contract('Inclining Simulation', (accounts) => {
 			await this.Vault.grantRole(VAULT_KEEPER, '0x0055f67515c252860fe9b27f6903d44fcfc3a727');
 
 			// add fund receiver1
-			await this.Vault.setup([receiver1, receiver2, receiver3], [8000, 1000, 1000], {from: owner});
+			await this.Vault.setup(['receiver1', 'receiver2', 'receiver3'], [8000, 1000, 1000], {
+				from: owner
+			});
 		});
 	});
 
 	describe('claim()', () => {
-		let receiver1Pendings;
-		let receiver2Pendings;
-		let receiver3Pendings;
-		let receiver1PendingsAfter;
-		let receiver2PendingsAfter;
-		let receiver3PendingsAfter;
-
-		let receiver1Details;
-		let receiver2Details;
-		let receiver3Details;
 		let receiver1DetailsAfter;
 		let receiver2DetailsAfter;
 		let receiver3DetailsAfter;
@@ -161,10 +77,16 @@ contract('Inclining Simulation', (accounts) => {
 
 		let currentNonceUser1;
 		let signature;
+		let receiver1;
+		let receiver2;
+		let receiver3;
 		beforeEach('', async () => {
 			startBlock = await this.Vault.startBlock();
 			// get current nonce of user
 			currentNonceUser1 = await this.Vault.userNonce(user1);
+			receiver1 = 1;
+			receiver2 = 2;
+			receiver3 = 3;
 		});
 		it('should distribute correctly after 500 blocks', async () => {
 			console.log('startBlock: ', startBlock.toString());
@@ -359,13 +281,13 @@ contract('Inclining Simulation', (accounts) => {
 			await time.advanceBlockTo(blocksToIncrease);
 
 			// // claim 64k tokens
-			await claim(this.Vault, user1, ether('64000'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId);
 
-			// // claim 10.5 tokens
-			await claim(this.Vault, user1, ether('10500'), receiver2, this.pk, this.chainId);
+			// // // claim 10.5 tokens
+			// await claim(this.Vault, user1, ether('10500'), receiver2, this.pk, this.chainId);
 
-			// // claim 10.5 tokens
-			await claim(this.Vault, user1, ether('15500'), receiver3, this.pk, this.chainId);
+			// // // claim 10.5 tokens
+			// await claim(this.Vault, user1, ether('15500'), receiver3, this.pk, this.chainId);
 
 			const currentBlockAfter = await this.BlockData.getBlock();
 			console.log('currentBlockAfter: ', currentBlockAfter.toString());
