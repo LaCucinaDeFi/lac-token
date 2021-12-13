@@ -21,7 +21,7 @@ function weiToEth(Value) {
 	return Value.div(ether('1'));
 }
 
-contract('Vault', (accounts) => {
+contract.only('Vault', (accounts) => {
 	const owner = accounts[0];
 	const minter = accounts[1];
 	const user1 = accounts[2];
@@ -146,6 +146,9 @@ contract('Vault', (accounts) => {
 
 	describe('addFundReceivers()', () => {
 		before('add fundReceiver', async () => {
+			// pause contract
+			await this.Vault.pause();
+
 			// add fund receiver1 and receiver2
 			await this.Vault.addFundReceivers(['receiver2'], [1000], {from: owner});
 		});
@@ -167,7 +170,7 @@ contract('Vault', (accounts) => {
 
 			expect(fundReceiver1Details.lacShare).to.bignumber.be.eq(new BN('9000'));
 			expect(fundReceiver1Details.totalAccumulatedFunds).to.bignumber.be.eq(
-				new BN('249999999999999999999')
+				new BN('333333333333333333332')
 			);
 
 			expect(fundReceiver2Details.lacShare).to.bignumber.be.eq(new BN('1000'));
@@ -200,6 +203,16 @@ contract('Vault', (accounts) => {
 			);
 		});
 
+		it('should revert when admin tries to add the fund receiver when contract is not pause', async () => {
+			// unpause contract
+			await this.Vault.unPause();
+
+			await expectRevert(
+				this.Vault.addFundReceivers(['receiver1'], [1000], {from: owner}),
+				'Pausable: not paused'
+			);
+		});
+
 		it('should allocate funds correctly when new receiver is added', async () => {
 			const currentBlock = await this.BlockData.getBlock();
 			//increase time by 3 blocks per day = 28800 Number(57600)
@@ -211,8 +224,13 @@ contract('Vault', (accounts) => {
 			const receiver1Pendings = await this.Vault.getPendingAccumulatedFunds(1);
 			const receiver2Pendings = await this.Vault.getPendingAccumulatedFunds(2);
 
+			// pause contract
+			await this.Vault.pause();
+
 			// // add third fund receiver
 			await this.Vault.shrinkReceiver(1, 'receiver3', 1000, {from: owner});
+			// unpause contract
+			await this.Vault.unPause();
 
 			const receiver1PendingsAfter = await this.Vault.getPendingAccumulatedFunds(1);
 			const receiver2PendingsAfter = await this.Vault.getPendingAccumulatedFunds(2);
@@ -272,6 +290,9 @@ contract('Vault', (accounts) => {
 			fundReceiver3Details = await this.Vault.fundReceivers(3);
 
 			totalRecieversBefore = await this.Vault.getTotalFundReceivers();
+
+			// pause contract
+			await this.Vault.pause();
 
 			// remove receiver3
 			await this.Vault.removeFundReceiver(3, {from: owner});
@@ -337,6 +358,13 @@ contract('Vault', (accounts) => {
 				'LacTokenUtils: ITEM_DOES_NOT_EXISTS'
 			);
 		});
+
+		it('should revert when admin tries remove the fund receiver when contract is not paused', async () => {
+			// unpause contract
+			await this.Vault.unPause();
+
+			await expectRevert(this.Vault.removeFundReceiver(1, {from: owner}), 'Pausable: not paused');
+		});
 	});
 
 	describe('updateReceiverShare()', () => {
@@ -348,6 +376,8 @@ contract('Vault', (accounts) => {
 		it('should decrease the receiver`s share correctly', async () => {
 			receiver1DetailsBefore = await this.Vault.fundReceivers(1);
 			totalSharesBefore = await this.Vault.totalShares();
+			// pause contract
+			await this.Vault.pause();
 
 			// update receiver1` share
 			await this.Vault.updateReceiverShare(1, new BN('7000'), {from: owner});
@@ -400,6 +430,16 @@ contract('Vault', (accounts) => {
 				'Vault: RECEIVER_DOES_NOT_EXISTS'
 			);
 		});
+
+		it('should revert when owner tries to update fundreceiver`s share when contract is unpaused', async () => {
+			// unpause contract
+			await this.Vault.unPause();
+
+			await expectRevert(
+				this.Vault.updateReceiverShare(1, new BN('7000'), {from: owner}),
+				'Pausable: not paused'
+			);
+		});
 	});
 
 	describe('shrinkReceiver()', () => {
@@ -411,6 +451,9 @@ contract('Vault', (accounts) => {
 		it('should shrink receiver correctly', async () => {
 			receiver1DetailsBefore = await this.Vault.fundReceivers(1);
 			totalSharesBefore = await this.Vault.totalShares();
+
+			// pause contract
+			await this.Vault.pause();
 
 			// shrink receiver
 			await this.Vault.shrinkReceiver(1, 'receiver3', new BN('1000'), {from: owner});
@@ -463,6 +506,16 @@ contract('Vault', (accounts) => {
 			await expectRevert(
 				this.Vault.shrinkReceiver(1, '', new BN('5000'), {from: owner}),
 				'Vault: INVALID_NAME'
+			);
+		});
+
+		it('should revert when owner tries to shrink receiver to add receiver when contract is unpaused', async () => {
+			// unpause contract
+			await this.Vault.unPause();
+
+			await expectRevert(
+				this.Vault.shrinkReceiver(1, 'receiver1', new BN('5000'), {from: owner}),
+				'Pausable: not paused'
 			);
 		});
 	});
@@ -1036,6 +1089,29 @@ contract('Vault', (accounts) => {
 			expect(finalReleaseRatePerPeriod).to.bignumber.be.eq(finalReleaseRatePerPeriodAfter);
 			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(currentReleaseRatePerBlockAfter);
 		});
+
+		it('should revert when user tries to claim when contract is paused', async () => {
+			// unpause contract
+			await this.Vault.pause();
+
+			signature = await createSignature(
+				this.pk,
+				user1,
+				ether('0.1'),
+				currentNonce,
+				receiver1,
+				8,
+				this.Vault.address,
+				new BN('111')
+			);
+
+			await expectRevert(
+				this.Vault.claim(ether('0.1'), receiver1, 8, signature, {
+					from: user1
+				}),
+				'Pausable: not paused'
+			);
+		});
 	});
 
 	describe('updateFinalReleaseRatePerPeriod()', async () => {
@@ -1064,10 +1140,23 @@ contract('Vault', (accounts) => {
 				'Vault: ALREADY_SET'
 			);
 		});
+
+		it('should revert when owner tries to update the release rate when contract is unpaused', async () => {
+			// unpause contract
+			await this.Vault.unPause();
+
+			await expectRevert(
+				this.Vault.updateFinalReleaseRatePerPeriod(ether('10000000'), {from: owner}),
+				'Pausable: not paused'
+			);
+		});
 	});
 
 	describe('updateChangePercentage()', async () => {
 		it('should update the updateChangePercentage correctly', async () => {
+			// unpause contract
+			await this.Vault.pause();
+
 			const changePercentage = await this.Vault.changePercentage();
 
 			//update increase percentage
@@ -1092,10 +1181,23 @@ contract('Vault', (accounts) => {
 				'Vault: ALREADY_SET'
 			);
 		});
+
+		it('should revert when owner tries to update the increase percentage when contract is unpaused', async () => {
+			// unpause contract
+			await this.Vault.unPause();
+
+			await expectRevert(
+				this.Vault.updateChangePercentage('800', {from: owner}),
+				'Pausable: not paused'
+			);
+		});
 	});
 
 	describe('updateChangeRateAfterPeriod()', async () => {
 		it('should update the updateChangeRateAfterPeriod correctly', async () => {
+			// unpause contract
+			await this.Vault.pause();
+
 			const changeRateAfterPeriod = await this.Vault.changeRateAfterPeriod();
 
 			//update increase period duration
@@ -1122,10 +1224,23 @@ contract('Vault', (accounts) => {
 				'Vault: ALREADY_SET'
 			);
 		});
+
+		it('should revert when owner tries to update the  increase period duration when contract is unpaused', async () => {
+			// unpause contract
+			await this.Vault.unPause();
+
+			await expectRevert(
+				this.Vault.updateChangeRateAfterPeriod(blocksPerWeek * 6, {from: owner}),
+				'Pausable: not paused'
+			);
+		});
 	});
 
 	describe('updateTotalBlocksPerPeriod()', async () => {
 		it('should update the updateTotalBlocksPerPeriod correctly', async () => {
+			// unpause contract
+			await this.Vault.pause();
+
 			const totalBlocksPerPeriod = await this.Vault.totalBlocksPerPeriod();
 
 			//update block time
@@ -1144,10 +1259,20 @@ contract('Vault', (accounts) => {
 			);
 		});
 
-		it('should revert when owner tries to update the increase period duration with already set value', async () => {
+		it('should revert when owner tries to update the total blocks per period with already set value', async () => {
 			await expectRevert(
 				this.Vault.updateTotalBlocksPerPeriod('2', {from: owner}),
 				'Vault: ALREADY_SET'
+			);
+		});
+
+		it('should revert when owner tries to update the total blocks per period when contract is unpaused', async () => {
+			// unpause contract
+			await this.Vault.unPause();
+
+			await expectRevert(
+				this.Vault.updateTotalBlocksPerPeriod('4', {from: owner}),
+				'Pausable: not paused'
 			);
 		});
 	});

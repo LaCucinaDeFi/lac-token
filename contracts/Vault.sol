@@ -8,6 +8,7 @@ import '@openzeppelin/contracts-upgradeable/utils/cryptography/draft-EIP712Upgra
 import '@openzeppelin/contracts-upgradeable/utils/cryptography/ECDSAUpgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol';
+import '@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol';
 
 import './library/LacTokenUtils.sol';
 import './interfaces/IVersionedContract.sol';
@@ -16,6 +17,7 @@ contract Vault is
 	EIP712Upgradeable,
 	AccessControlUpgradeable,
 	ReentrancyGuardUpgradeable,
+	PausableUpgradeable,
 	IVersionedContract
 {
 	using CountersUpgradeable for CountersUpgradeable.Counter;
@@ -96,6 +98,7 @@ contract Vault is
 		__AccessControl_init();
 		__ReentrancyGuard_init();
 		__EIP712_init(_name, getVersionNumber());
+		__Pausable_init();
 		_setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
 
 		LacToken = IERC20Upgradeable(_lacAddress);
@@ -183,7 +186,7 @@ contract Vault is
 		uint256 _receiverId,
 		uint256 _referenceNumber,
 		bytes calldata _signature
-	) external virtual nonReentrant {
+	) external virtual nonReentrant whenNotPaused {
 		(bool isExists, ) = LacTokenUtils.isNumberExists(fundReceiversList, _receiverId);
 		require(isExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
 
@@ -218,6 +221,7 @@ contract Vault is
 		external
 		virtual
 		onlyAdmin
+		whenPaused
 	{
 		require(
 			_fundReceivers.length > 0 && _fundReceivers.length == _shares.length,
@@ -235,7 +239,7 @@ contract Vault is
 	 * @notice This method allows admin to remove the receiver from being able to claim/receive LAC tokens.
 	 * @param _receiverId indicates the receiver id to remove.
 	 */
-	function removeFundReceiver(uint256 _receiverId) external virtual onlyAdmin {
+	function removeFundReceiver(uint256 _receiverId) external virtual onlyAdmin whenPaused {
 		_updateAllocatedFunds();
 
 		LacTokenUtils.removeNumberFromList(fundReceiversList, _receiverId);
@@ -253,7 +257,12 @@ contract Vault is
 	 * @param _receiverId - indicates the id of the fundReceiver
 	 * @param _newShare - indicates the new share for the fundReceiver. ex. 100 = 1%
 	 */
-	function updateReceiverShare(uint256 _receiverId, uint256 _newShare) external virtual onlyAdmin {
+	function updateReceiverShare(uint256 _receiverId, uint256 _newShare)
+		external
+		virtual
+		onlyAdmin
+		whenPaused
+	{
 		_updateAllocatedFunds();
 
 		(bool isExists, ) = LacTokenUtils.isNumberExists(fundReceiversList, _receiverId);
@@ -279,7 +288,7 @@ contract Vault is
 		uint256 _existingReceiverId,
 		string memory _newReceiverName,
 		uint256 _newShare
-	) external virtual onlyAdmin returns (uint256 receiverId) {
+	) external virtual onlyAdmin whenPaused returns (uint256 receiverId) {
 		require(bytes(_newReceiverName).length > 0, 'Vault: INVALID_NAME');
 
 		_updateAllocatedFunds();
@@ -303,27 +312,32 @@ contract Vault is
 		emit ReceiverShrinked(_existingReceiverId, receiverId, _newShare);
 	}
 
-	function updateFinalReleaseRatePerPeriod(uint256 _maxReleaseRate) external virtual onlyAdmin {
+	function updateFinalReleaseRatePerPeriod(uint256 _maxReleaseRate)
+		external
+		virtual
+		onlyAdmin
+		whenPaused
+	{
 		require(_maxReleaseRate != finalReleaseRatePerPeriod, 'Vault: ALREADY_SET');
 		finalReleaseRatePerPeriod = _maxReleaseRate;
 
 		emit finalReleaseRatePerPeriodUpdated(_maxReleaseRate);
 	}
 
-	function updateChangePercentage(int256 _newPercentage) external virtual onlyAdmin {
+	function updateChangePercentage(int256 _newPercentage) external virtual onlyAdmin whenPaused {
 		require(_newPercentage != changePercentage, 'Vault: ALREADY_SET');
 		changePercentage = _newPercentage;
 		emit ChangePercentage(_newPercentage);
 	}
 
-	function updateChangeRateAfterPeriod(uint256 _newPeriods) external virtual onlyAdmin {
+	function updateChangeRateAfterPeriod(uint256 _newPeriods) external virtual onlyAdmin whenPaused {
 		require(_newPeriods != changeRateAfterPeriod, 'Vault: ALREADY_SET');
 		changeRateAfterPeriod = _newPeriods;
 
 		emit ChangeRateAfterPeriod(_newPeriods);
 	}
 
-	function updateTotalBlocksPerPeriod(uint256 _newBlocks) external virtual onlyAdmin {
+	function updateTotalBlocksPerPeriod(uint256 _newBlocks) external virtual onlyAdmin whenPaused {
 		require(_newBlocks != totalBlocksPerPeriod, 'Vault: ALREADY_SET');
 		totalBlocksPerPeriod = _newBlocks;
 		emit UpdateTotalBlocksPerPeriod(_newBlocks);
@@ -366,6 +380,20 @@ contract Vault is
 		require(IERC20Upgradeable(_tokenAddress).transfer(_user, _amount));
 
 		emit ClaimTokens(_user, _tokenAddress, _amount);
+	}
+
+	/**
+	 * @notice This method allows admin to pause the contract
+	 */
+	function pause() external onlyAdmin {
+		_pause();
+	}
+
+	/**
+	 * @notice This method allows admin to un-pause the contract
+	 */
+	function unPause() external onlyAdmin {
+		_unpause();
 	}
 
 	/*
