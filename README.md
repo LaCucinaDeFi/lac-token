@@ -28,14 +28,14 @@ The main motive behind the vault contract is to allow the users to claim the rew
   ```
   here, blockTime is block time of underlying chain. in our case it is set to 3 due to bsc chain.
   above we divide the total no. of tokens to distribute in period by the total no. of blocks in period.
- * **_maxReleaseRatePerPeriod**: Indicates the maximum no. of LAC tokens to distribute per period. Once we cross the maximum no. of release rate, we don`t update the release rate afterwards. here, once we reach the maxReleaseRatePerPeriod then we set the currentReleaseRatePerPeriod to maxReleaseRatePerPeriod and calculates per block release rate. Then we keep distributing the tokens at this rate.
+ * **_finalReleaseRatePerPeriod**: Indicates the maximum no. of LAC tokens to distribute per period. Once we cross the maximum no. of release rate, we don`t update the release rate afterwards. here, once we reach the finalReleaseRatePerPeriod then we set the currentReleaseRatePerPeriod to finalReleaseRatePerPeriod and calculates per block release rate. Then we keep distributing the tokens at this rate.
  * **_increasePercent**: Indicates the percentage for increasing the per period release rate.
  When we complete the certain no. of periods, we increase the currentRelease rate by this no. of percentage. 
  
-    ex. currenteReleaseRatePerPeriod = 1000000,  increasePercentage = 5%, no. of periods to complete =4 weeks.
+    ex. currenteReleaseRatePerPeriod = 1000000,  changePercentage = 5%, no. of periods to complete =4 weeks.
     Here, when we complete the 4 weeks of duration, we calculate the new currentReleaseRatePerPeriod using the following formula.
     ```
-    increaseAmount = (currenteReleaseRatePerPeriod * increasePercentage) / 10000
+    increaseAmount = (currenteReleaseRatePerPeriod * changePercentage) / 10000
     
     i.e
     
