@@ -4,7 +4,7 @@ const Web3 = require('web3');
 const {expect} = require('chai');
 const {BN, ether, time} = require('@openzeppelin/test-helpers');
 const {deployProxy} = require('@openzeppelin/truffle-upgrades');
-const {PRIVATE_KEY} = require('../secrets.test.json');
+const {PRIVATE_KEY, PUBLIC_ADDRESS} = require('../secrets.test.json');
 
 const {claim, createSignature} = require('./helper/helper');
 
@@ -61,7 +61,7 @@ contract('DecliningSimulation', (accounts) => {
 			// grant vaultKeeper role
 			const VAULT_KEEPER = await this.Vault.VAULT_KEEPER();
 			await this.Vault.grantRole(VAULT_KEEPER, vaultKeeper, {from: owner});
-			await this.Vault.grantRole(VAULT_KEEPER, '0x0055f67515c252860fe9b27f6903d44fcfc3a727');
+			await this.Vault.grantRole(VAULT_KEEPER, PUBLIC_ADDRESS);
 
 			// add fund receiver1
 			await this.Vault.setup(['receiver1', 'receiver2', 'receiver3'], [8000, 1000, 1000], {

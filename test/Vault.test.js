@@ -5,7 +5,7 @@ const {expect} = require('chai');
 const {expectRevert, BN, ether, time} = require('@openzeppelin/test-helpers');
 const {deployProxy} = require('@openzeppelin/truffle-upgrades');
 const {ZERO_ADDRESS} = require('@openzeppelin/test-helpers/src/constants');
-const {PRIVATE_KEY} = require('../secrets.test.json');
+const {PRIVATE_KEY, PUBLIC_ADDRESS} = require('../secrets.test.json');
 const {claim, createSignature} = require('./helper/helper');
 
 const LacToken = artifacts.require('LacToken');
@@ -21,7 +21,7 @@ function weiToEth(Value) {
 	return Value.div(ether('1'));
 }
 
-contract.only('Vault', (accounts) => {
+contract('Vault', (accounts) => {
 	const owner = accounts[0];
 	const minter = accounts[1];
 	const user1 = accounts[2];
@@ -245,13 +245,13 @@ contract.only('Vault', (accounts) => {
 				currentPerBlockAmount,
 				new BN('9000'),
 				new BN('10000'),
-				new BN('1')
+				new BN('2')
 			);
 			const receiver2Share = getReceiverShare(
 				currentPerBlockAmount,
 				new BN('1000'),
 				new BN('10000'),
-				new BN('1')
+				new BN('2')
 			);
 
 			expect(fundReceiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
@@ -310,13 +310,13 @@ contract.only('Vault', (accounts) => {
 				currentPerBlockAmount,
 				new BN('8000'),
 				new BN('10000'),
-				new BN('1')
+				new BN('2')
 			);
 			const receiver2Share = getReceiverShare(
 				currentPerBlockAmount,
 				new BN('1000'),
 				new BN('10000'),
-				new BN('1')
+				new BN('2')
 			);
 
 			expect(totalRecieversBefore).to.bignumber.be.eq(new BN('3'));
@@ -541,7 +541,7 @@ contract.only('Vault', (accounts) => {
 		before(async () => {
 			const VAULT_KEEPER = await this.Vault.VAULT_KEEPER();
 
-			await this.Vault.grantRole(VAULT_KEEPER, '0x0055f67515c252860fe9b27f6903d44fcfc3a727');
+			await this.Vault.grantRole(VAULT_KEEPER, PUBLIC_ADDRESS);
 
 			// get current nonce of user
 			currentNonce = await this.Vault.userNonce(user1);
@@ -1109,7 +1109,7 @@ contract.only('Vault', (accounts) => {
 				this.Vault.claim(ether('0.1'), receiver1, 8, signature, {
 					from: user1
 				}),
-				'Pausable: not paused'
+				'Pausable: paused'
 			);
 		});
 	});
