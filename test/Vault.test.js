@@ -3,18 +3,15 @@ require('chai').should();
 const Web3 = require('web3');
 const {expect} = require('chai');
 const {expectRevert, BN, ether, time} = require('@openzeppelin/test-helpers');
-const {deployProxy, upgradeProxy} = require('@openzeppelin/truffle-upgrades');
+const {deployProxy} = require('@openzeppelin/truffle-upgrades');
 const {ZERO_ADDRESS} = require('@openzeppelin/test-helpers/src/constants');
 const {PRIVATE_KEY} = require('../secrets.test.json');
-const {signTypedData_v4} = require('eth-sig-util');
+const {claim, createSignature} = require('./helper/helper');
 
 const LacToken = artifacts.require('LacToken');
 const Vault = artifacts.require('Vault');
 const BlockData = artifacts.require('BlockData');
 const SampleToken = artifacts.require('SampleToken');
-
-const name = 'Vault';
-const version = '1.0.0';
 
 function getReceiverShare(perBlockAmount, receiverShare, totalShare, totalBlocks) {
 	return perBlockAmount.mul(totalBlocks).mul(receiverShare).div(totalShare);
@@ -24,83 +21,13 @@ function weiToEth(Value) {
 	return Value.div(ether('1'));
 }
 
-async function claim(Vault, user, amount, receiver, pk, chainId) {
-	// should be able to claim with latest nonce
-	const currentNonce = await Vault.userNonce(user);
-
-	signature = await createSignature(
-		pk,
-		user,
-		amount,
-		currentNonce,
-		receiver,
-		3,
-		Vault.address,
-		chainId
-	);
-
-	//claim tokens
-	await Vault.claim(amount, receiver, 3, signature, {
-		from: user
-	});
-}
-async function createSignature(
-	pk,
-	userAddress,
-	claimAmount,
-	nonceValue,
-	receiverAddress,
-	referenceNumberValue,
-	contractAddress,
-	chainId
-) {
-	const typedMessage = {
-		data: {
-			types: {
-				EIP712Domain: [
-					{name: 'name', type: 'string'},
-					{name: 'version', type: 'string'},
-					{name: 'chainId', type: 'uint256'},
-					{name: 'verifyingContract', type: 'address'}
-				],
-				Claim: [
-					{name: 'account', type: 'address'},
-					{name: 'amount', type: 'uint256'},
-					{name: 'receiver', type: 'address'},
-					{name: 'nonce', type: 'uint256'},
-					{name: 'referenceNumber', type: 'uint256'}
-				]
-			},
-			domain: {
-				name,
-				version,
-				chainId,
-				verifyingContract: contractAddress
-			},
-			primaryType: 'Claim',
-			message: {
-				account: userAddress,
-				amount: claimAmount,
-				receiver: receiverAddress,
-				nonce: nonceValue,
-				referenceNumber: referenceNumberValue
-			}
-		}
-	};
-
-	signature = await signTypedData_v4(pk, typedMessage);
-	return signature;
-}
-
-contract('Vault', (accounts) => {
+contract.only('Vault', (accounts) => {
 	const owner = accounts[0];
 	const minter = accounts[1];
 	const user1 = accounts[2];
 	const user2 = accounts[3];
 	const user3 = accounts[4];
-	const receiver1 = accounts[5];
-	const receiver2 = accounts[6];
-	const receiver3 = accounts[7];
+
 	const vaultKeeper = accounts[8];
 	const blocksPerWeek = Number(time.duration.hours('1')) / 3;
 	let currentPerBlockAmount;
@@ -166,11 +93,21 @@ contract('Vault', (accounts) => {
 	});
 
 	describe('setup()', () => {
-		before('', async () => {
-			// add fund receiver1 and receiver2
-			await this.Vault.setup([receiver1], [9000], {from: owner});
+		it('should revert when admin tries to setup vault with invalid receiver name', async () => {
+			await expectRevert(this.Vault.setup([''], [1000], {from: owner}), 'Vault: INVALID_NAME');
 		});
+
+		it('should revert when admin tries to setup vault with invalid data', async () => {
+			await expectRevert(
+				this.Vault.setup(['receiver2'], [1000, 2000], {from: owner}),
+				'Vault: INVALID_DATA'
+			);
+		});
+
 		it('should setup the vault correctly', async () => {
+			// add fund receiver1 and receiver2
+			await this.Vault.setup(['receiver1'], [9000], {from: owner});
+
 			const currentBlock = await this.BlockData.getBlock();
 			const startBlock = await this.Vault.startBlock();
 			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
@@ -178,25 +115,30 @@ contract('Vault', (accounts) => {
 			const totalShares = await this.Vault.totalShares();
 			const totalReceivers = await this.Vault.getTotalFundReceivers();
 			const isSetup = await this.Vault.isSetup();
+			const reeceiverDetails = await this.Vault.fundReceivers(1);
 
 			expect(startBlock).to.bignumber.be.eq(currentBlock);
 			expect(lastFundUpdatedBlock).to.bignumber.be.eq(currentBlock);
-			expect(fundReceiver1).to.be.eq(receiver1);
+			expect(fundReceiver1).to.bignumber.be.eq(new BN('1'));
 			expect(isSetup).to.be.eq(true);
 			expect(totalShares).to.bignumber.be.eq(new BN('9000'));
 			expect(totalReceivers).to.bignumber.be.eq(new BN('1'));
+
+			expect(reeceiverDetails.name).to.be.eq('receiver1');
+			expect(reeceiverDetails.lacShare).to.bignumber.be.eq(new BN('9000'));
+			expect(reeceiverDetails.totalAccumulatedFunds).to.bignumber.be.eq(new BN('0'));
 		});
 
 		it('should revert when non-admin tries to add setup vault', async () => {
 			await expectRevert(
-				this.Vault.setup([receiver1], [9000], {from: user1}),
+				this.Vault.setup(['receiver1'], [9000], {from: user1}),
 				'Vault: ONLY_ADMIN_CAN_CALL'
 			);
 		});
 
-		it('should revert when admin tries to add setup vault again', async () => {
+		it('should revert when admin tries to setup vault again', async () => {
 			await expectRevert(
-				this.Vault.setup([receiver2], [1000], {from: owner}),
+				this.Vault.setup(['receiver2'], [1000], {from: owner}),
 				'Vault: ALREADY_SETUP_DONE'
 			);
 		});
@@ -204,28 +146,31 @@ contract('Vault', (accounts) => {
 
 	describe('addFundReceivers()', () => {
 		before('add fundReceiver', async () => {
+			// pause contract
+			await this.Vault.pause();
+
 			// add fund receiver1 and receiver2
-			await this.Vault.addFundReceivers([receiver2], [1000], {from: owner});
+			await this.Vault.addFundReceivers(['receiver2'], [1000], {from: owner});
 		});
 
 		it('should add fund receivers correctly', async () => {
-			const fundReceiver1 = await this.Vault.fundReceiversList(0);
-			const fundReceiver2 = await this.Vault.fundReceiversList(1);
+			const fundReceiver1Id = await this.Vault.fundReceiversList(0);
+			const fundReceiver2Id = await this.Vault.fundReceiversList(1);
 
-			const fundReceiver1Details = await this.Vault.fundReceivers(receiver1);
-			const fundReceiver2Details = await this.Vault.fundReceivers(receiver2);
+			const fundReceiver1Details = await this.Vault.fundReceivers(fundReceiver1Id);
+			const fundReceiver2Details = await this.Vault.fundReceivers(fundReceiver2Id);
 
-			const receiver1Share = await this.Vault.getFundReceiverShare(receiver1);
-			const receiver2Share = await this.Vault.getFundReceiverShare(receiver2);
+			const receiver1Share = await this.Vault.getFundReceiverShare(fundReceiver1Id);
+			const receiver2Share = await this.Vault.getFundReceiverShare(fundReceiver2Id);
 			const totalShares = await this.Vault.totalShares();
 			const totalReceivers = await this.Vault.getTotalFundReceivers();
 
-			expect(fundReceiver1).to.be.eq(receiver1);
-			expect(fundReceiver2).to.be.eq(receiver2);
+			expect(fundReceiver1Id).to.bignumber.be.eq(new BN('1'));
+			expect(fundReceiver2Id).to.bignumber.be.eq(new BN('2'));
 
 			expect(fundReceiver1Details.lacShare).to.bignumber.be.eq(new BN('9000'));
 			expect(fundReceiver1Details.totalAccumulatedFunds).to.bignumber.be.eq(
-				new BN('249999999999999999999')
+				new BN('333333333333333333332')
 			);
 
 			expect(fundReceiver2Details.lacShare).to.bignumber.be.eq(new BN('1000'));
@@ -239,22 +184,32 @@ contract('Vault', (accounts) => {
 
 		it('should revert when non-admin tries to add the fund receiver', async () => {
 			await expectRevert(
-				this.Vault.addFundReceivers([receiver3], [1000], {from: minter}),
+				this.Vault.addFundReceivers(['receiver3'], [1000], {from: minter}),
 				'Vault: ONLY_ADMIN_CAN_CALL'
 			);
 		});
 
-		it('should revert when admin tries to add the zero address as fund receiver', async () => {
+		it('should revert when admin tries to add the empty name for fund receiver', async () => {
 			await expectRevert(
-				this.Vault.addFundReceivers([ZERO_ADDRESS], [1000], {from: owner}),
-				'LacTokenUtils: CANNOT_ADD_ZERO_ADDRESS'
+				this.Vault.addFundReceivers([''], [1000], {from: owner}),
+				'Vault: INVALID_NAME'
 			);
 		});
 
-		it('should revert when admin tries to add the already existing fund receiver', async () => {
+		it('should revert when admin tries to add the fund receiver with invalid data', async () => {
 			await expectRevert(
-				this.Vault.addFundReceivers([receiver1], [1000], {from: owner}),
-				'LacTokenUtils: ADDRESS_ALREADY_EXISTS'
+				this.Vault.addFundReceivers(['receiver1', 'receiver2'], [1000], {from: owner}),
+				'Vault: INVALID_DATA'
+			);
+		});
+
+		it('should revert when admin tries to add the fund receiver when contract is not pause', async () => {
+			// unpause contract
+			await this.Vault.unPause();
+
+			await expectRevert(
+				this.Vault.addFundReceivers(['receiver1'], [1000], {from: owner}),
+				'Pausable: not paused'
 			);
 		});
 
@@ -263,21 +218,26 @@ contract('Vault', (accounts) => {
 			//increase time by 3 blocks per day = 28800 Number(57600)
 			await time.advanceBlockTo(Number(currentBlock.toString()) + Number(3));
 
-			const fundReceiver1Details = await this.Vault.fundReceivers(receiver1);
-			const fundReceiver2Details = await this.Vault.fundReceivers(receiver2);
+			const fundReceiver1Details = await this.Vault.fundReceivers(1); // 1 receiver1 id
+			const fundReceiver2Details = await this.Vault.fundReceivers(2); // 2 receiver2 id
 
-			const receiver1Pendings = await this.Vault.getPendingAccumulatedFunds(receiver1);
-			const receiver2Pendings = await this.Vault.getPendingAccumulatedFunds(receiver2);
+			const receiver1Pendings = await this.Vault.getPendingAccumulatedFunds(1);
+			const receiver2Pendings = await this.Vault.getPendingAccumulatedFunds(2);
+
+			// pause contract
+			await this.Vault.pause();
 
 			// // add third fund receiver
-			await this.Vault.shrinkReceiver(receiver1, receiver3, 1000, {from: owner});
+			await this.Vault.shrinkReceiver(1, 'receiver3', 1000, {from: owner});
+			// unpause contract
+			await this.Vault.unPause();
 
-			const receiver1PendingsAfter = await this.Vault.getPendingAccumulatedFunds(receiver1);
-			const receiver2PendingsAfter = await this.Vault.getPendingAccumulatedFunds(receiver2);
+			const receiver1PendingsAfter = await this.Vault.getPendingAccumulatedFunds(1);
+			const receiver2PendingsAfter = await this.Vault.getPendingAccumulatedFunds(2);
 
-			const fundReceiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
-			const fundReceiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);
-			const fundReceiver3DetailsAfter = await this.Vault.fundReceivers(receiver3);
+			const fundReceiver1DetailsAfter = await this.Vault.fundReceivers(1);
+			const fundReceiver2DetailsAfter = await this.Vault.fundReceivers(2);
+			const fundReceiver3DetailsAfter = await this.Vault.fundReceivers(3);
 
 			const totalShares = await this.Vault.totalShares();
 
@@ -315,7 +275,7 @@ contract('Vault', (accounts) => {
 		});
 	});
 
-	describe('removeFundReceiverAddress()', () => {
+	describe('removeFundReceiver()', () => {
 		let totalRecieversBefore;
 		let receiver1Pendings;
 		let receiver2Pendings;
@@ -325,23 +285,26 @@ contract('Vault', (accounts) => {
 		let fundReceiver3Details;
 
 		before('remove fund receiver', async () => {
-			fundReceiver1Details = await this.Vault.fundReceivers(receiver1);
-			fundReceiver2Details = await this.Vault.fundReceivers(receiver2);
-			fundReceiver3Details = await this.Vault.fundReceivers(receiver3);
+			fundReceiver1Details = await this.Vault.fundReceivers(1);
+			fundReceiver2Details = await this.Vault.fundReceivers(2);
+			fundReceiver3Details = await this.Vault.fundReceivers(3);
 
 			totalRecieversBefore = await this.Vault.getTotalFundReceivers();
 
+			// pause contract
+			await this.Vault.pause();
+
 			// remove receiver3
-			await this.Vault.removeFundReceiverAddress(receiver3, {from: owner});
+			await this.Vault.removeFundReceiver(3, {from: owner});
 		});
 
 		it('should remove the fundReceiver correctly', async () => {
 			const totalReceivers = await this.Vault.getTotalFundReceivers();
 			const totalShare = await this.Vault.totalShares();
 
-			const fundReceiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
-			const fundReceiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);
-			const fundReceiver3DetailsAfter = await this.Vault.fundReceivers(receiver3);
+			const fundReceiver1DetailsAfter = await this.Vault.fundReceivers(1);
+			const fundReceiver2DetailsAfter = await this.Vault.fundReceivers(2);
+			const fundReceiver3DetailsAfter = await this.Vault.fundReceivers(3);
 
 			const receiver1Share = getReceiverShare(
 				currentPerBlockAmount,
@@ -350,12 +313,6 @@ contract('Vault', (accounts) => {
 				new BN('1')
 			);
 			const receiver2Share = getReceiverShare(
-				currentPerBlockAmount,
-				new BN('1000'),
-				new BN('10000'),
-				new BN('1')
-			);
-			const receiver3hare = getReceiverShare(
 				currentPerBlockAmount,
 				new BN('1000'),
 				new BN('10000'),
@@ -381,8 +338,8 @@ contract('Vault', (accounts) => {
 
 			expect(fundReceiver1DetailsAfter.lacShare).to.bignumber.be.eq(new BN('8000'));
 
-			const receiver1PendingsAfter = await this.Vault.getPendingAccumulatedFunds(receiver1);
-			const receiver2PendingsAfter = await this.Vault.getPendingAccumulatedFunds(receiver2);
+			const receiver1PendingsAfter = await this.Vault.getPendingAccumulatedFunds(1);
+			const receiver2PendingsAfter = await this.Vault.getPendingAccumulatedFunds(2);
 
 			expect(receiver1PendingsAfter).to.bignumber.be.eq(new BN('0'));
 			expect(receiver2PendingsAfter).to.bignumber.be.eq(new BN('0'));
@@ -390,16 +347,23 @@ contract('Vault', (accounts) => {
 
 		it('should revert when non-admin tries remove the fund receiver address', async () => {
 			await expectRevert(
-				this.Vault.removeFundReceiverAddress(receiver3, {from: minter}),
+				this.Vault.removeFundReceiver(3, {from: minter}),
 				'Vault: ONLY_ADMIN_CAN_CALL'
 			);
 		});
 
 		it('should revert when admin tries remove the fund receiver address which already removed', async () => {
 			await expectRevert(
-				this.Vault.removeFundReceiverAddress(receiver3, {from: owner}),
+				this.Vault.removeFundReceiver(3, {from: owner}),
 				'LacTokenUtils: ITEM_DOES_NOT_EXISTS'
 			);
+		});
+
+		it('should revert when admin tries remove the fund receiver when contract is not paused', async () => {
+			// unpause contract
+			await this.Vault.unPause();
+
+			await expectRevert(this.Vault.removeFundReceiver(1, {from: owner}), 'Pausable: not paused');
 		});
 	});
 
@@ -410,13 +374,15 @@ contract('Vault', (accounts) => {
 		let totalSharesAfter;
 
 		it('should decrease the receiver`s share correctly', async () => {
-			receiver1DetailsBefore = await this.Vault.fundReceivers(receiver1);
+			receiver1DetailsBefore = await this.Vault.fundReceivers(1);
 			totalSharesBefore = await this.Vault.totalShares();
+			// pause contract
+			await this.Vault.pause();
 
 			// update receiver1` share
-			await this.Vault.updateReceiverShare(receiver1, new BN('7000'), {from: owner});
+			await this.Vault.updateReceiverShare(1, new BN('7000'), {from: owner});
 
-			receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
+			receiver1DetailsAfter = await this.Vault.fundReceivers(1);
 			totalSharesAfter = await this.Vault.totalShares();
 
 			expect(receiver1DetailsBefore.lacShare).to.bignumber.be.eq(new BN('8000'));
@@ -426,13 +392,13 @@ contract('Vault', (accounts) => {
 		});
 
 		it('should increase the receiver`s share correctly', async () => {
-			receiver1DetailsBefore = await this.Vault.fundReceivers(receiver1);
+			receiver1DetailsBefore = await this.Vault.fundReceivers(1);
 			totalSharesBefore = await this.Vault.totalShares();
 
 			// update receiver1` share
-			await this.Vault.updateReceiverShare(receiver1, new BN('9000'), {from: owner});
+			await this.Vault.updateReceiverShare(1, new BN('9000'), {from: owner});
 
-			receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
+			receiver1DetailsAfter = await this.Vault.fundReceivers(1);
 			totalSharesAfter = await this.Vault.totalShares();
 
 			expect(receiver1DetailsBefore.lacShare).to.bignumber.be.eq(new BN('7000'));
@@ -443,25 +409,35 @@ contract('Vault', (accounts) => {
 
 		it('should revert when non-owner tries to update the fundreceiver`s share', async () => {
 			await expectRevert(
-				this.Vault.updateReceiverShare(receiver1, new BN('7000'), {from: minter}),
+				this.Vault.updateReceiverShare(1, new BN('7000'), {from: minter}),
 				'Vault: ONLY_ADMIN_CAN_CALL'
 			);
 		});
 		it('should revert when owner tries to update the fundreceiver`s share with already set value', async () => {
 			await expectRevert(
-				this.Vault.updateReceiverShare(receiver1, new BN('9000'), {from: owner}),
+				this.Vault.updateReceiverShare(1, new BN('9000'), {from: owner}),
 				'Vault: INVALID_SHARE'
 			);
 			await expectRevert(
-				this.Vault.updateReceiverShare(receiver1, new BN('0'), {from: owner}),
+				this.Vault.updateReceiverShare(1, new BN('0'), {from: owner}),
 				'Vault: INVALID_SHARE'
 			);
 		});
 
 		it('should revert when owner tries to update the non-existant fundreceiver`s share', async () => {
 			await expectRevert(
-				this.Vault.updateReceiverShare(receiver3, new BN('7000'), {from: owner}),
+				this.Vault.updateReceiverShare(3, new BN('7000'), {from: owner}),
 				'Vault: RECEIVER_DOES_NOT_EXISTS'
+			);
+		});
+
+		it('should revert when owner tries to update fundreceiver`s share when contract is unpaused', async () => {
+			// unpause contract
+			await this.Vault.unPause();
+
+			await expectRevert(
+				this.Vault.updateReceiverShare(1, new BN('7000'), {from: owner}),
+				'Pausable: not paused'
 			);
 		});
 	});
@@ -469,20 +445,21 @@ contract('Vault', (accounts) => {
 	describe('shrinkReceiver()', () => {
 		let receiver1DetailsBefore;
 		let receiver1DetailsAfter;
-		let receiver3DetailsBefore;
 		let receiver3DetailsAfter;
 		let totalSharesBefore;
 		let totalSharesAfter;
 		it('should shrink receiver correctly', async () => {
-			receiver1DetailsBefore = await this.Vault.fundReceivers(receiver1);
-			receiver3DetailsBefore = await this.Vault.fundReceivers(receiver3);
+			receiver1DetailsBefore = await this.Vault.fundReceivers(1);
 			totalSharesBefore = await this.Vault.totalShares();
 
-			// shrink receiver
-			await this.Vault.shrinkReceiver(receiver1, receiver3, new BN('1000'), {from: owner});
+			// pause contract
+			await this.Vault.pause();
 
-			receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
-			receiver3DetailsAfter = await this.Vault.fundReceivers(receiver3);
+			// shrink receiver
+			await this.Vault.shrinkReceiver(1, 'receiver3', new BN('1000'), {from: owner});
+
+			receiver1DetailsAfter = await this.Vault.fundReceivers(1);
+			receiver3DetailsAfter = await this.Vault.fundReceivers(4);
 			totalSharesAfter = await this.Vault.totalShares();
 
 			const totalReceivers = await this.Vault.getTotalFundReceivers();
@@ -490,7 +467,6 @@ contract('Vault', (accounts) => {
 			expect(totalReceivers).to.bignumber.be.eq(new BN('3'));
 			expect(receiver1DetailsBefore.lacShare).to.bignumber.be.eq(new BN('9000'));
 			expect(receiver1DetailsAfter.lacShare).to.bignumber.be.eq(new BN('8000'));
-			expect(receiver3DetailsBefore.lacShare).to.bignumber.be.eq(new BN('0'));
 			expect(receiver3DetailsAfter.lacShare).to.bignumber.be.eq(new BN('1000'));
 
 			expect(totalSharesBefore).to.bignumber.be.eq(new BN('10000'));
@@ -499,44 +475,47 @@ contract('Vault', (accounts) => {
 
 		it('should revert when non-owner tries to shrink fund receiver', async () => {
 			await expectRevert(
-				this.Vault.shrinkReceiver(receiver1, receiver3, new BN('1000'), {from: user1}),
+				this.Vault.shrinkReceiver(1, 'receiver3', new BN('1000'), {from: user1}),
 				'Vault: ONLY_ADMIN_CAN_CALL'
 			);
 		});
 
 		it('should revert when owner tries to shrink non-existing receiver', async () => {
 			await expectRevert(
-				this.Vault.shrinkReceiver(minter, receiver3, new BN('1000'), {from: owner}),
+				this.Vault.shrinkReceiver(7, 'receiver3', new BN('1000'), {from: owner}),
 				'Vault: RECEIVER_DOES_NOT_EXISTS'
 			);
 		});
 
 		it('should revert when owner tries to shrink existing receiver with invalid share', async () => {
 			await expectRevert(
-				this.Vault.shrinkReceiver(receiver1, receiver3, new BN('10000'), {from: owner}),
+				this.Vault.shrinkReceiver(1, 'receiver3', new BN('10000'), {from: owner}),
 				'Vault: INVALID_SHARE'
 			);
 			await expectRevert(
-				this.Vault.shrinkReceiver(receiver1, receiver3, new BN('8000'), {from: owner}),
+				this.Vault.shrinkReceiver(1, 'receiver3', new BN('8000'), {from: owner}),
 				'Vault: INVALID_SHARE'
 			);
 			await expectRevert(
-				this.Vault.shrinkReceiver(receiver1, receiver3, new BN('0'), {from: owner}),
+				this.Vault.shrinkReceiver(1, 'receiver3', new BN('0'), {from: owner}),
 				'Vault: INVALID_SHARE'
 			);
 		});
 
-		it('should revert when owner tries to shrink receiver to add already existing receiver', async () => {
+		it('should revert when owner tries to shrink receiver to add receiver with empty name', async () => {
 			await expectRevert(
-				this.Vault.shrinkReceiver(receiver1, receiver3, new BN('5000'), {from: owner}),
-				'LacTokenUtils: ADDRESS_ALREADY_EXISTS'
+				this.Vault.shrinkReceiver(1, '', new BN('5000'), {from: owner}),
+				'Vault: INVALID_NAME'
 			);
 		});
 
-		it('should revert when owner tries to shrink receiver to add zero address as receiver', async () => {
+		it('should revert when owner tries to shrink receiver to add receiver when contract is unpaused', async () => {
+			// unpause contract
+			await this.Vault.unPause();
+
 			await expectRevert(
-				this.Vault.shrinkReceiver(receiver1, ZERO_ADDRESS, new BN('5000'), {from: owner}),
-				'LacTokenUtils: CANNOT_ADD_ZERO_ADDRESS'
+				this.Vault.shrinkReceiver(1, 'receiver1', new BN('5000'), {from: owner}),
+				'Pausable: not paused'
 			);
 		});
 	});
@@ -556,20 +535,23 @@ contract('Vault', (accounts) => {
 		let receiver1DetailsAfter;
 		let receiver2DetailsAfter;
 		let receiver3DetailsAfter;
+		let receiver1;
+		let receiver2;
+		let receiver3;
 		before(async () => {
 			const VAULT_KEEPER = await this.Vault.VAULT_KEEPER();
-			await this.Vault.grantRole(VAULT_KEEPER, receiver1);
-			await this.Vault.grantRole(VAULT_KEEPER, receiver2);
-			await this.Vault.grantRole(VAULT_KEEPER, receiver3);
 
 			await this.Vault.grantRole(VAULT_KEEPER, '0x0055f67515c252860fe9b27f6903d44fcfc3a727');
 
 			// get current nonce of user
 			currentNonce = await this.Vault.userNonce(user1);
+			receiver1 = 1;
+			receiver2 = 2;
+			receiver3 = 4;
 		});
 
 		it('should allow user to claim', async () => {
-			const receiver1Details = await this.Vault.fundReceivers(receiver1);
+			const receiver1Details = await this.Vault.fundReceivers(1);
 			const startBlock = await this.Vault.startBlock();
 
 			// transfer lac tokens to Vault
@@ -663,7 +645,7 @@ contract('Vault', (accounts) => {
 				user1,
 				ether('1'),
 				currentNonce,
-				user2,
+				8,
 				8,
 				this.Vault.address,
 				this.chainId
@@ -671,7 +653,7 @@ contract('Vault', (accounts) => {
 
 			//claim tokens
 			await expectRevert(
-				this.Vault.claim(ether('1'), user2, 8, signature, {
+				this.Vault.claim(ether('1'), 8, 8, signature, {
 					from: user1
 				}),
 				'Vault: RECEIVER_DOES_NOT_EXISTS'
@@ -1036,7 +1018,7 @@ contract('Vault', (accounts) => {
 
 			expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('110250'));
 			expect(currentReleaseRatePerBlockAfter).to.bignumber.be.eq(ether('91.875'));
-			expect(startBlockAfter).to.bignumber.be.eq(new BN('2411'));
+			expect(startBlockAfter).to.bignumber.be.eq(new BN('2413'));
 		});
 
 		it('should reach the maxReleaseRatePerWeek on time correctly', async () => {
@@ -1107,6 +1089,29 @@ contract('Vault', (accounts) => {
 			expect(finalReleaseRatePerPeriod).to.bignumber.be.eq(finalReleaseRatePerPeriodAfter);
 			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(currentReleaseRatePerBlockAfter);
 		});
+
+		it('should revert when user tries to claim when contract is paused', async () => {
+			// unpause contract
+			await this.Vault.pause();
+
+			signature = await createSignature(
+				this.pk,
+				user1,
+				ether('0.1'),
+				currentNonce,
+				receiver1,
+				8,
+				this.Vault.address,
+				new BN('111')
+			);
+
+			await expectRevert(
+				this.Vault.claim(ether('0.1'), receiver1, 8, signature, {
+					from: user1
+				}),
+				'Pausable: not paused'
+			);
+		});
 	});
 
 	describe('updateFinalReleaseRatePerPeriod()', async () => {
@@ -1135,10 +1140,23 @@ contract('Vault', (accounts) => {
 				'Vault: ALREADY_SET'
 			);
 		});
+
+		it('should revert when owner tries to update the release rate when contract is unpaused', async () => {
+			// unpause contract
+			await this.Vault.unPause();
+
+			await expectRevert(
+				this.Vault.updateFinalReleaseRatePerPeriod(ether('10000000'), {from: owner}),
+				'Pausable: not paused'
+			);
+		});
 	});
 
 	describe('updateChangePercentage()', async () => {
 		it('should update the updateChangePercentage correctly', async () => {
+			// unpause contract
+			await this.Vault.pause();
+
 			const changePercentage = await this.Vault.changePercentage();
 
 			//update increase percentage
@@ -1163,10 +1181,23 @@ contract('Vault', (accounts) => {
 				'Vault: ALREADY_SET'
 			);
 		});
+
+		it('should revert when owner tries to update the increase percentage when contract is unpaused', async () => {
+			// unpause contract
+			await this.Vault.unPause();
+
+			await expectRevert(
+				this.Vault.updateChangePercentage('800', {from: owner}),
+				'Pausable: not paused'
+			);
+		});
 	});
 
 	describe('updateChangeRateAfterPeriod()', async () => {
 		it('should update the updateChangeRateAfterPeriod correctly', async () => {
+			// unpause contract
+			await this.Vault.pause();
+
 			const changeRateAfterPeriod = await this.Vault.changeRateAfterPeriod();
 
 			//update increase period duration
@@ -1193,10 +1224,23 @@ contract('Vault', (accounts) => {
 				'Vault: ALREADY_SET'
 			);
 		});
+
+		it('should revert when owner tries to update the  increase period duration when contract is unpaused', async () => {
+			// unpause contract
+			await this.Vault.unPause();
+
+			await expectRevert(
+				this.Vault.updateChangeRateAfterPeriod(blocksPerWeek * 6, {from: owner}),
+				'Pausable: not paused'
+			);
+		});
 	});
 
 	describe('updateTotalBlocksPerPeriod()', async () => {
 		it('should update the updateTotalBlocksPerPeriod correctly', async () => {
+			// unpause contract
+			await this.Vault.pause();
+
 			const totalBlocksPerPeriod = await this.Vault.totalBlocksPerPeriod();
 
 			//update block time
@@ -1215,10 +1259,20 @@ contract('Vault', (accounts) => {
 			);
 		});
 
-		it('should revert when owner tries to update the increase period duration with already set value', async () => {
+		it('should revert when owner tries to update the total blocks per period with already set value', async () => {
 			await expectRevert(
 				this.Vault.updateTotalBlocksPerPeriod('2', {from: owner}),
 				'Vault: ALREADY_SET'
+			);
+		});
+
+		it('should revert when owner tries to update the total blocks per period when contract is unpaused', async () => {
+			// unpause contract
+			await this.Vault.unPause();
+
+			await expectRevert(
+				this.Vault.updateTotalBlocksPerPeriod('4', {from: owner}),
+				'Pausable: not paused'
 			);
 		});
 	});
@@ -1344,9 +1398,9 @@ contract('Vault', (accounts) => {
 
 	describe('getFundReceiverShare()', () => {
 		it('should return fund receivers share correctly', async () => {
-			const receiver1Share = await this.Vault.getFundReceiverShare(receiver1);
-			const receiver2Share = await this.Vault.getFundReceiverShare(receiver2);
-			const receiver3Share = await this.Vault.getFundReceiverShare(receiver3);
+			const receiver1Share = await this.Vault.getFundReceiverShare(1);
+			const receiver2Share = await this.Vault.getFundReceiverShare(2);
+			const receiver3Share = await this.Vault.getFundReceiverShare(4);
 			expect(receiver1Share).to.bignumber.be.eq(new BN('800000000000'));
 			expect(receiver2Share).to.bignumber.be.eq(new BN('100000000000'));
 			expect(receiver3Share).to.bignumber.be.eq(new BN('100000000000'));
@@ -1356,7 +1410,7 @@ contract('Vault', (accounts) => {
 	describe('getPendingAccumulatedFunds()', () => {
 		it('should get the pending accumulated funds correctly', async () => {
 			//update allocated funds
-			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('1'), 1, this.pk, this.chainId);
 
 			const currentPerBlockAmount = await this.Vault.currentReleaseRatePerBlock();
 
@@ -1383,9 +1437,9 @@ contract('Vault', (accounts) => {
 			await time.advanceBlockTo(currentBlock.add(new BN('1')));
 
 			//get pending accumulated funds
-			const pendingFunds1 = await this.Vault.getPendingAccumulatedFunds(receiver1);
-			const pendingFunds2 = await this.Vault.getPendingAccumulatedFunds(receiver2);
-			const pendingFunds3 = await this.Vault.getPendingAccumulatedFunds(receiver3);
+			const pendingFunds1 = await this.Vault.getPendingAccumulatedFunds(1);
+			const pendingFunds2 = await this.Vault.getPendingAccumulatedFunds(2);
+			const pendingFunds3 = await this.Vault.getPendingAccumulatedFunds(4);
 
 			expect(pendingFunds1).to.bignumber.be.eq(receiver1Share);
 			expect(pendingFunds2).to.bignumber.be.eq(receiver2Share);

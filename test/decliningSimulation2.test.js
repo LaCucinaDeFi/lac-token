@@ -5,6 +5,7 @@ const {expect} = require('chai');
 const {BN, ether, time} = require('@openzeppelin/test-helpers');
 const {deployProxy} = require('@openzeppelin/truffle-upgrades');
 const {PRIVATE_KEY} = require('../secrets.test.json');
+
 const {claim, createSignature} = require('./helper/helper');
 
 const LacToken = artifacts.require('LacToken');
@@ -12,14 +13,14 @@ const Vault = artifacts.require('Vault');
 const BlockData = artifacts.require('BlockData');
 const SampleToken = artifacts.require('SampleToken');
 
-contract('Inclining Simulation', (accounts) => {
+contract('DecliningSimulation2', (accounts) => {
 	const owner = accounts[0];
 	const minter = accounts[1];
 	const user1 = accounts[2];
 	const user2 = accounts[3];
 	const user3 = accounts[4];
 	const vaultKeeper = accounts[8];
-	const blocksPerWeek = 1000; //Number(time.duration.hours('1')) / 3;
+	const blocksPerWeek = 1000;
 	let currentPerBlockAmount;
 	before('deploy contract', async () => {
 		// deploy LAC token
@@ -32,9 +33,9 @@ contract('Inclining Simulation', (accounts) => {
 		this.Vault = await deployProxy(Vault, [
 			'Vault',
 			this.LacToken.address,
-			ether('100000'), // min
-			ether('1000000'), // max
-			500, // 5%
+			ether('90000000'), //90m initial
+			ether('1000'), // min
+			-3000, // -30%
 			blocksPerWeek,
 			blocksPerWeek
 		]);
@@ -88,7 +89,11 @@ contract('Inclining Simulation', (accounts) => {
 			receiver2 = 2;
 			receiver3 = 3;
 		});
+
 		it('should distribute correctly after 500 blocks', async () => {
+			const perBlockAmount = await this.Vault.currentReleaseRatePerBlock();
+			console.log('perBlockAmount: ', perBlockAmount.toString());
+
 			console.log('startBlock: ', startBlock.toString());
 
 			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
@@ -103,8 +108,21 @@ contract('Inclining Simulation', (accounts) => {
 			// increase 500 blocks
 			await time.advanceBlockTo(blocksToIncrease);
 
-			// claim 20k tokens
-			await claim(this.Vault, user1, ether('20000'), receiver1, this.pk, this.chainId);
+			signature = await createSignature(
+				this.pk,
+				user1,
+				ether('26000000'), // 26m
+				currentNonceUser1,
+				receiver1,
+				5,
+				this.Vault.address,
+				this.chainId
+			);
+
+			//claim tokens
+			await this.Vault.claim(ether('26000000'), receiver1, 5, signature, {
+				from: user1
+			});
 
 			const currentBlockAfter = await this.BlockData.getBlock();
 			console.log('currentBlockAfter: ', currentBlockAfter.toString());
@@ -128,20 +146,18 @@ contract('Inclining Simulation', (accounts) => {
 
 			const user1Bal = await this.LacToken.balanceOf(user1);
 			console.log('user1Bal: ', user1Bal.toString());
-			const perBlockAmount = await this.Vault.currentReleaseRatePerBlock();
-			console.log('perBlockAmount: ', perBlockAmount.toString());
 
-			expect(perBlockAmount).to.bignumber.be.eq(ether('100'));
+			expect(perBlockAmount).to.bignumber.be.eq(ether('90000'));
 
 			//add tokens accumulated in 501th block
 			expect(receiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				ether('20000').add(ether('80'))
+				ether('10000000').add(ether('72000'))
 			);
 			expect(receiver2DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				ether('5000').add(ether('10'))
+				ether('4500000').add(ether('9000'))
 			);
 			expect(receiver3DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				ether('5000').add(ether('10'))
+				ether('4500000').add(ether('9000'))
 			);
 		});
 
@@ -160,10 +176,10 @@ contract('Inclining Simulation', (accounts) => {
 			await time.advanceBlockTo(blocksToIncrease);
 
 			// claim 60k tokens
-			await claim(this.Vault, user1, ether('60000'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('16000000'), receiver1, this.pk, this.chainId);
 
 			// claim 5k tokens
-			await claim(this.Vault, user1, ether('5000'), receiver3, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('4000000'), receiver3, this.pk, this.chainId);
 
 			const currentBlockAfter = await this.BlockData.getBlock();
 			console.log('currentBlockAfter: ', currentBlockAfter.toString());
@@ -191,19 +207,26 @@ contract('Inclining Simulation', (accounts) => {
 			const perBlockAmount = await this.Vault.currentReleaseRatePerBlock();
 			console.log('perBlockAmount: ', perBlockAmount.toString());
 
-			expect(perBlockAmount).to.bignumber.be.eq(ether('105'));
+			expect(perBlockAmount).to.bignumber.be.eq(ether('27000'));
 
 			//add tokens accumulated in 1001st block
-			expect(receiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(ether('84'));
-			expect(receiver2DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				ether('10000').add(ether('10.5'))
+			expect(receiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
+				ether('30000000').add(ether('21600'))
 			);
+
+			expect(receiver2DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
+				ether('9000000').add(ether('2700'))
+			);
+
 			expect(receiver3DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				ether('5000').add(ether('10.5'))
+				ether('5000000').add(ether('2700'))
 			);
 		});
 
 		it('should distribute correctly after 1500 blocks', async () => {
+			const perBlockAmount = await this.Vault.currentReleaseRatePerBlock();
+			console.log('perBlockAmount: ', perBlockAmount.toString());
+
 			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
 			console.log('lastFundUpdatedBlock: ', lastFundUpdatedBlock.toString());
 			console.log('startBlock: ', startBlock.toString());
@@ -217,11 +240,11 @@ contract('Inclining Simulation', (accounts) => {
 			// increase 500 blocks
 			await time.advanceBlockTo(blocksToIncrease);
 
-			// claim 20k tokens
-			await claim(this.Vault, user1, ether('20000'), receiver1, this.pk, this.chainId);
+			// claim 28k tokens
+			await claim(this.Vault, user1, ether('10800000'), receiver1, this.pk, this.chainId);
 
-			// claim 20k tokens
-			await claim(this.Vault, user1, ether('10000'), receiver2, this.pk, this.chainId);
+			// claim  4750k tokens
+			await claim(this.Vault, user1, ether('53500000'), receiver2, this.pk, this.chainId);
 
 			const currentBlockAfter = await this.BlockData.getBlock();
 			console.log('currentBlockAfter: ', currentBlockAfter.toString());
@@ -229,10 +252,6 @@ contract('Inclining Simulation', (accounts) => {
 			receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
 			receiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);
 			receiver3DetailsAfter = await this.Vault.fundReceivers(receiver3);
-
-			// console.log('receiver1Details: ', receiver1Details.totalAccumulatedFunds.toString());
-			// console.log('receiver2Details: ', receiver2Details.totalAccumulatedFunds.toString());
-			// console.log('receiver3Details: ', receiver3Details.totalAccumulatedFunds.toString());
 
 			console.log(
 				'receiver1DetailsAfter: ',
@@ -249,24 +268,26 @@ contract('Inclining Simulation', (accounts) => {
 
 			const user1Bal = await this.LacToken.balanceOf(user1);
 			console.log('user1Bal: ', user1Bal.toString());
-			const perBlockAmount = await this.Vault.currentReleaseRatePerBlock();
-			console.log('perBlockAmount: ', perBlockAmount.toString());
 
-			expect(perBlockAmount).to.bignumber.be.eq(ether('105'));
+			expect(perBlockAmount).to.bignumber.be.eq(ether('27000'));
 
-			//add tokens accumulated in 1501st block
 			expect(receiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				ether('22000').add(ether('84'))
+				ether('30000000').add(ether('21600'))
 			);
+
 			expect(receiver2DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				ether('5250').add(ether('10.5'))
+				ether('5000000').add(ether('2700'))
 			);
+
 			expect(receiver3DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				ether('10250').add(ether('10.5'))
+				ether('63500000').add(ether('2700'))
 			);
 		});
 
 		it('should distribute correctly after 2000 blocks', async () => {
+			const perBlockAmount = await this.Vault.currentReleaseRatePerBlock();
+			console.log('perBlockAmount: ', perBlockAmount.toString());
+
 			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
 			console.log('lastFundUpdatedBlock: ', lastFundUpdatedBlock.toString());
 			console.log('startBlock: ', startBlock.toString());
@@ -280,14 +301,14 @@ contract('Inclining Simulation', (accounts) => {
 			// increase 500 blocks
 			await time.advanceBlockTo(blocksToIncrease);
 
-			// // claim 64k tokens
-			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId);
+			// claim  4750k tokens
+			await claim(this.Vault, user1, ether('32800000'), receiver1, this.pk, this.chainId);
 
-			// // // claim 10.5 tokens
-			// await claim(this.Vault, user1, ether('10500'), receiver2, this.pk, this.chainId);
+			// claim  4750k tokens
+			await claim(this.Vault, user1, ether('63500000'), receiver2, this.pk, this.chainId);
 
-			// // // claim 10.5 tokens
-			// await claim(this.Vault, user1, ether('15500'), receiver3, this.pk, this.chainId);
+			// claim  4750k tokens
+			await claim(this.Vault, user1, ether('63500000'), receiver3, this.pk, this.chainId);
 
 			const currentBlockAfter = await this.BlockData.getBlock();
 			console.log('currentBlockAfter: ', currentBlockAfter.toString());
@@ -295,10 +316,6 @@ contract('Inclining Simulation', (accounts) => {
 			receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
 			receiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);
 			receiver3DetailsAfter = await this.Vault.fundReceivers(receiver3);
-
-			// console.log('receiver1Details: ', receiver1Details.totalAccumulatedFunds.toString());
-			// console.log('receiver2Details: ', receiver2Details.totalAccumulatedFunds.toString());
-			// console.log('receiver3Details: ', receiver3Details.totalAccumulatedFunds.toString());
 
 			console.log(
 				'receiver1DetailsAfter: ',
@@ -315,19 +332,18 @@ contract('Inclining Simulation', (accounts) => {
 
 			const user1Bal = await this.LacToken.balanceOf(user1);
 			console.log('user1Bal: ', user1Bal.toString());
-			const perBlockAmount = await this.Vault.currentReleaseRatePerBlock();
-			console.log('perBlockAmount: ', perBlockAmount.toString());
 
-			expect(perBlockAmount).to.bignumber.be.eq(ether('110.25'));
+			expect(perBlockAmount).to.bignumber.be.eq(ether('8100'));
 
-			//add tokens accumulated in 1501st block
 			expect(receiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				ether('64000').add(ether('88.2'))
+				ether('10000000').add(ether('6480'))
 			);
 			expect(receiver2DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				ether('10500').add(ether('11.025'))
+				ether('0').add(ether('810'))
 			);
-			expect(receiver3DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(ether('11.025'));
+			expect(receiver3DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
+				ether('1000000').add(ether('810'))
+			);
 		});
 	});
 });

@@ -7,6 +7,8 @@ import '@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20Pausable
 import '@openzeppelin/contracts-upgradeable/utils/cryptography/draft-EIP712Upgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/utils/cryptography/ECDSAUpgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol';
+import '@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol';
+import '@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol';
 
 import './library/LacTokenUtils.sol';
 import './interfaces/IVersionedContract.sol';
@@ -15,8 +17,11 @@ contract Vault is
 	EIP712Upgradeable,
 	AccessControlUpgradeable,
 	ReentrancyGuardUpgradeable,
+	PausableUpgradeable,
 	IVersionedContract
 {
+	using CountersUpgradeable for CountersUpgradeable.Counter;
+
 	/*
    =======================================================================
    ======================== Structures ===================================
@@ -24,6 +29,7 @@ contract Vault is
  */
 
 	struct FundReceiver {
+		string name;
 		uint256 lacShare;
 		uint256 totalAccumulatedFunds;
 	}
@@ -34,6 +40,14 @@ contract Vault is
  */
 
 	bytes32 public constant VAULT_KEEPER = keccak256('VAULT_KEEPER');
+
+	/*
+   =======================================================================
+   ======================== Private Variables ============================
+   =======================================================================
+ */
+
+	CountersUpgradeable.Counter private receiverCounter;
 
 	/*
    =======================================================================
@@ -53,11 +67,11 @@ contract Vault is
 	uint256 public lastFundUpdatedBlock;
 	uint256 public totalBlocksPerPeriod;
 	uint256 public shareMultiplier;
-	address[] public fundReceiversList;
+	uint256[] public fundReceiversList;
 	bool public isSetup;
 
-	/// fundReceiver => share percentage
-	mapping(address => FundReceiver) public fundReceivers;
+	/// fundReceiverId => share percentage
+	mapping(uint256 => FundReceiver) public fundReceivers;
 
 	/// userAddress => nonce
 	mapping(address => uint256) public userNonce;
@@ -84,6 +98,7 @@ contract Vault is
 		__AccessControl_init();
 		__ReentrancyGuard_init();
 		__EIP712_init(_name, getVersionNumber());
+		__Pausable_init();
 		_setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
 
 		LacToken = IERC20Upgradeable(_lacAddress);
@@ -107,16 +122,16 @@ contract Vault is
  	*/
 	event Claimed(
 		address account,
-		address receiver,
+		uint256 receiverId,
 		uint256 amount,
 		uint256 timestamp,
 		uint256 referenceId
 	);
 
-	event ReceiverAdded(address receiver, uint256 share);
-	event ReceiverRemoved(address receiver);
-	event ReceiverShareUpdated(address receiver, uint256 newShare);
-	event ReceiverShrinked(address existingReceiver, address newReceiver, uint256 newShare);
+	event ReceiverAdded(uint256 receiverId, uint256 share);
+	event ReceiverRemoved(uint256 receiverId);
+	event ReceiverShareUpdated(uint256 receiver, uint256 newShare);
+	event ReceiverShrinked(uint256 existingReceiverId, uint256 newReceiverId, uint256 newShare);
 	event finalReleaseRatePerPeriodUpdated(uint256 newPerPeriodRate);
 	event ChangePercentage(int256 newPercent);
 	event ChangeRateAfterPeriod(uint256 newRate);
@@ -143,7 +158,7 @@ contract Vault is
 	 * @param _fundReceivers - indicates the list of receivers
 	 * @param _shares - indicates the list of shares of respective receivers
 	 */
-	function setup(address[] memory _fundReceivers, uint256[] memory _shares) external onlyAdmin {
+	function setup(string[] memory _fundReceivers, uint256[] memory _shares) external onlyAdmin {
 		require(!isSetup, 'Vault: ALREADY_SETUP_DONE');
 		require(
 			_fundReceivers.length > 0 && _fundReceivers.length == _shares.length,
@@ -151,7 +166,7 @@ contract Vault is
 		);
 
 		for (uint256 i = 0; i < _fundReceivers.length; i++) {
-			_addFundReceiverAddress(_fundReceivers[i], _shares[i]);
+			_addFundReceiver(_fundReceivers[i], _shares[i]);
 		}
 
 		lastFundUpdatedBlock = block.number;
@@ -162,39 +177,39 @@ contract Vault is
 	/**
 	 * @notice This method allows operators to claim the specified amount of LAC tokens from the fundReceiver
 	 * @param  _amount - indicates the amount of tokens to claim
-	 * @param _receiver - indicates the fund receiver address from which funds to claim
+	 * @param _receiverId - indicates the fund receiver id from which funds to claim
 	 * @param _referenceNumber - indicates the unique reference number for claim
 	 * @param _signature - indicates the singature for claiming the tokens
 	 */
 	function claim(
 		uint256 _amount,
-		address _receiver,
+		uint256 _receiverId,
 		uint256 _referenceNumber,
 		bytes calldata _signature
-	) external virtual nonReentrant {
-		(bool isExists, ) = LacTokenUtils.isAddressExists(fundReceiversList, _receiver);
+	) external virtual nonReentrant whenNotPaused {
+		(bool isExists, ) = LacTokenUtils.isNumberExists(fundReceiversList, _receiverId);
 		require(isExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
 
 		// update allocated funds
 		_updateAllocatedFunds();
 
 		require(
-			_amount > 0 && _amount <= fundReceivers[_receiver].totalAccumulatedFunds,
+			_amount > 0 && _amount <= fundReceivers[_receiverId].totalAccumulatedFunds,
 			'Vault: INSUFFICIENT_AMOUNT'
 		);
 		require(
-			_verify(_hash(_amount, _receiver, userNonce[msg.sender], _referenceNumber), _signature),
+			_verify(_hash(_amount, _receiverId, userNonce[msg.sender], _referenceNumber), _signature),
 			'Vault: INVALID_SIGNATURE'
 		);
 
 		require(LacToken.transfer(msg.sender, _amount), 'Vault: TRANSFER_FAILED');
 
-		fundReceivers[_receiver].totalAccumulatedFunds -= _amount;
+		fundReceivers[_receiverId].totalAccumulatedFunds -= _amount;
 
 		//update user nonce
 		userNonce[msg.sender] += 1;
 
-		emit Claimed(msg.sender, _receiver, _amount, block.timestamp, _referenceNumber);
+		emit Claimed(msg.sender, _receiverId, _amount, block.timestamp, _referenceNumber);
 	}
 
 	/**
@@ -202,10 +217,11 @@ contract Vault is
 	 * @param _fundReceivers - indicates the list of receivers
 	 * @param _shares - indicates the list of shares of respective receivers
 	 */
-	function addFundReceivers(address[] memory _fundReceivers, uint256[] memory _shares)
+	function addFundReceivers(string[] memory _fundReceivers, uint256[] memory _shares)
 		external
 		virtual
 		onlyAdmin
+		whenPaused
 	{
 		require(
 			_fundReceivers.length > 0 && _fundReceivers.length == _shares.length,
@@ -215,94 +231,113 @@ contract Vault is
 		_updateAllocatedFunds();
 
 		for (uint256 i = 0; i < _fundReceivers.length; i++) {
-			_addFundReceiverAddress(_fundReceivers[i], _shares[i]);
+			_addFundReceiver(_fundReceivers[i], _shares[i]);
 		}
 	}
 
 	/**
-	 * @notice This method allows admin to remove the allocator address from being able to claim/receive LAC tokens.
-	 * @param _account indicates the address to remove.
+	 * @notice This method allows admin to remove the receiver from being able to claim/receive LAC tokens.
+	 * @param _receiverId indicates the receiver id to remove.
 	 */
-	function removeFundReceiverAddress(address _account) external virtual onlyAdmin {
+	function removeFundReceiver(uint256 _receiverId) external virtual onlyAdmin whenPaused {
 		_updateAllocatedFunds();
 
-		LacTokenUtils.removeAddressFromList(fundReceiversList, _account);
+		LacTokenUtils.removeNumberFromList(fundReceiversList, _receiverId);
 
 		// update total shares
-		totalShares -= fundReceivers[_account].lacShare;
+		totalShares -= fundReceivers[_receiverId].lacShare;
 
-		delete fundReceivers[_account];
+		delete fundReceivers[_receiverId];
 
-		emit ReceiverRemoved(_account);
+		emit ReceiverRemoved(_receiverId);
 	}
 
 	/**
 	 * @notice This method allows admin to update the receiver`s share
-	 * @param _receiver - indicates the address of the fundReceiver
+	 * @param _receiverId - indicates the id of the fundReceiver
 	 * @param _newShare - indicates the new share for the fundReceiver. ex. 100 = 1%
 	 */
-	function updateReceiverShare(address _receiver, uint256 _newShare) external virtual onlyAdmin {
+	function updateReceiverShare(uint256 _receiverId, uint256 _newShare)
+		external
+		virtual
+		onlyAdmin
+		whenPaused
+	{
 		_updateAllocatedFunds();
 
-		(bool isExists, ) = LacTokenUtils.isAddressExists(fundReceiversList, _receiver);
+		(bool isExists, ) = LacTokenUtils.isNumberExists(fundReceiversList, _receiverId);
 
 		require(isExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
-		uint256 currentShare = fundReceivers[_receiver].lacShare;
+		uint256 currentShare = fundReceivers[_receiverId].lacShare;
 
 		require(currentShare != _newShare && _newShare > 0, 'Vault: INVALID_SHARE');
 
-		totalShares = (totalShares - fundReceivers[_receiver].lacShare) + _newShare;
-		fundReceivers[_receiver].lacShare = _newShare;
+		totalShares = (totalShares - fundReceivers[_receiverId].lacShare) + _newShare;
+		fundReceivers[_receiverId].lacShare = _newShare;
 
-		emit ReceiverShareUpdated(_receiver, _newShare);
+		emit ReceiverShareUpdated(_receiverId, _newShare);
 	}
 
 	/**
 	 * @notice This method allows admin to add new receiver by shrinking the share of existing receiver.
-	 * @param _existingReceiver - indicates the address of the existing fundReceiver whose share will allocated to new receiver
-	 * @param _newReceiver - indicates the address of the new fundReceiver.
+	 * @param _existingReceiverId - indicates the id of the existing fundReceiver whose share will allocated to new receiver
+	 * @param _newReceiverName - indicates the name of the new fundReceiver.
 	 * @param _newShare - indicates the new share for the fundReceiver. ex. 100 = 1%
 	 */
 	function shrinkReceiver(
-		address _existingReceiver,
-		address _newReceiver,
+		uint256 _existingReceiverId,
+		string memory _newReceiverName,
 		uint256 _newShare
-	) external virtual onlyAdmin {
+	) external virtual onlyAdmin whenPaused returns (uint256 receiverId) {
+		require(bytes(_newReceiverName).length > 0, 'Vault: INVALID_NAME');
+
 		_updateAllocatedFunds();
-		(bool isReceiverExists, ) = LacTokenUtils.isAddressExists(fundReceiversList, _existingReceiver);
+
+		(bool isReceiverExists, ) = LacTokenUtils.isNumberExists(
+			fundReceiversList,
+			_existingReceiverId
+		);
 		require(isReceiverExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
 
-		uint256 currentShare = fundReceivers[_existingReceiver].lacShare;
+		uint256 currentShare = fundReceivers[_existingReceiverId].lacShare;
 		require(_newShare < currentShare && _newShare > 0, 'Vault: INVALID_SHARE');
-		LacTokenUtils.addAddressInList(fundReceiversList, _newReceiver);
 
-		fundReceivers[_existingReceiver].lacShare = currentShare - _newShare;
-		fundReceivers[_newReceiver].lacShare = _newShare;
+		receiverCounter.increment();
+		receiverId = receiverCounter.current();
 
-		emit ReceiverShrinked(_existingReceiver, _newReceiver, _newShare);
+		fundReceivers[_existingReceiverId].lacShare = currentShare - _newShare;
+		fundReceivers[receiverId].lacShare = _newShare;
+		fundReceiversList.push(receiverId);
+
+		emit ReceiverShrinked(_existingReceiverId, receiverId, _newShare);
 	}
 
-	function updateFinalReleaseRatePerPeriod(uint256 _maxReleaseRate) external virtual onlyAdmin {
+	function updateFinalReleaseRatePerPeriod(uint256 _maxReleaseRate)
+		external
+		virtual
+		onlyAdmin
+		whenPaused
+	{
 		require(_maxReleaseRate != finalReleaseRatePerPeriod, 'Vault: ALREADY_SET');
 		finalReleaseRatePerPeriod = _maxReleaseRate;
 
 		emit finalReleaseRatePerPeriodUpdated(_maxReleaseRate);
 	}
 
-	function updateChangePercentage(int256 _newPercentage) external virtual onlyAdmin {
+	function updateChangePercentage(int256 _newPercentage) external virtual onlyAdmin whenPaused {
 		require(_newPercentage != changePercentage, 'Vault: ALREADY_SET');
 		changePercentage = _newPercentage;
 		emit ChangePercentage(_newPercentage);
 	}
 
-	function updateChangeRateAfterPeriod(uint256 _newPeriods) external virtual onlyAdmin {
+	function updateChangeRateAfterPeriod(uint256 _newPeriods) external virtual onlyAdmin whenPaused {
 		require(_newPeriods != changeRateAfterPeriod, 'Vault: ALREADY_SET');
 		changeRateAfterPeriod = _newPeriods;
 
 		emit ChangeRateAfterPeriod(_newPeriods);
 	}
 
-	function updateTotalBlocksPerPeriod(uint256 _newBlocks) external virtual onlyAdmin {
+	function updateTotalBlocksPerPeriod(uint256 _newBlocks) external virtual onlyAdmin whenPaused {
 		require(_newBlocks != totalBlocksPerPeriod, 'Vault: ALREADY_SET');
 		totalBlocksPerPeriod = _newBlocks;
 		emit UpdateTotalBlocksPerPeriod(_newBlocks);
@@ -347,6 +382,20 @@ contract Vault is
 		emit ClaimTokens(_user, _tokenAddress, _amount);
 	}
 
+	/**
+	 * @notice This method allows admin to pause the contract
+	 */
+	function pause() external onlyAdmin {
+		_pause();
+	}
+
+	/**
+	 * @notice This method allows admin to un-pause the contract
+	 */
+	function unPause() external onlyAdmin {
+		_unpause();
+	}
+
 	/*
    =======================================================================
    ======================== Getter Methods ===============================
@@ -362,14 +411,14 @@ contract Vault is
 	/**
 	 * This method returns the share of specified fund receiver
 	 */
-	function getFundReceiverShare(address _receiver) public view virtual returns (uint256) {
+	function getFundReceiverShare(uint256 _receiver) public view virtual returns (uint256) {
 		return (fundReceivers[_receiver].lacShare * shareMultiplier) / totalShares;
 	}
 
 	/**
 	 * This method returns fundReceiver`s accumulated funds
 	 */
-	function getPendingAccumulatedFunds(address _receiver)
+	function getPendingAccumulatedFunds(uint256 _receiver)
 		public
 		view
 		returns (uint256 accumulatedFunds)
@@ -448,15 +497,25 @@ contract Vault is
    =======================================================================
  	*/
 	/**
-	 * @notice This method allows admin to add the allocator address to be able to claim/receive LAC tokens.
-	 * @param _account indicates the address to add. 100 =1%
+	 * @notice This method allows admin to add the allocator to be able to claim/receive LAC tokens.
+	 * @param _receiverName indicates the name of the receiver to add.
+	 * @param _share indicates the share of the receiver in reward. 100 = 1%
 	 */
-	function _addFundReceiverAddress(address _account, uint256 _share) internal {
-		LacTokenUtils.addAddressInList(fundReceiversList, _account);
-		fundReceivers[_account] = FundReceiver(_share, 0);
+	function _addFundReceiver(string memory _receiverName, uint256 _share)
+		internal
+		returns (uint256 receiverId)
+	{
+		require(bytes(_receiverName).length > 0, 'Vault: INVALID_NAME');
+
+		receiverCounter.increment();
+		receiverId = receiverCounter.current();
+
+		fundReceivers[receiverId] = FundReceiver(_receiverName, _share, 0);
 		totalShares += _share;
 
-		emit ReceiverAdded(_account, _share);
+		fundReceiversList.push(receiverId);
+
+		emit ReceiverAdded(receiverId, _share);
 	}
 
 	function _isPeriodCompleted() public view returns (bool isCompleted) {
@@ -536,7 +595,7 @@ contract Vault is
 
 	function _hash(
 		uint256 _amount,
-		address _receiver,
+		uint256 _receiver,
 		uint256 _nonce,
 		uint256 _referenceNumber
 	) internal view returns (bytes32) {
@@ -545,7 +604,7 @@ contract Vault is
 				keccak256(
 					abi.encode(
 						keccak256(
-							'Claim(address account,uint256 amount,address receiver,uint256 nonce,uint256 referenceNumber)'
+							'Claim(address account,uint256 amount,uint256 receiver,uint256 nonce,uint256 referenceNumber)'
 						),
 						msg.sender,
 						_amount,
