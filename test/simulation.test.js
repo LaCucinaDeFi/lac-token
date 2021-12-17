@@ -266,7 +266,7 @@ contract('Inclining Simulation', (accounts) => {
 			);
 		});
 
-		it('should distribute correctly after 2000 blocks', async () => {
+		it.skip('should distribute correctly after 2000 blocks', async () => {
 			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
 			console.log('lastFundUpdatedBlock: ', lastFundUpdatedBlock.toString());
 			console.log('startBlock: ', startBlock.toString());
@@ -280,14 +280,22 @@ contract('Inclining Simulation', (accounts) => {
 			// increase 500 blocks
 			await time.advanceBlockTo(blocksToIncrease);
 
+			const receiver1Pending = await this.Vault.getPendingAccumulatedFunds(1);
+			const receiver2Pending = await this.Vault.getPendingAccumulatedFunds(2);
+			const receiver3Pending = await this.Vault.getPendingAccumulatedFunds(3);
+
+			console.log('receiver1Pending: ', receiver1Pending.toString());
+			console.log('receiver2Pending: ', receiver2Pending.toString());
+			console.log('receiver3Pending: ', receiver3Pending.toString());
+
 			// // claim 64k tokens
-			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('64000'), receiver1, this.pk, this.chainId);
 
-			// // // claim 10.5 tokens
-			// await claim(this.Vault, user1, ether('10500'), receiver2, this.pk, this.chainId);
+			// // claim 10.5 tokens
+			await claim(this.Vault, user1, ether('10500'), receiver2, this.pk, this.chainId);
 
-			// // // claim 10.5 tokens
-			// await claim(this.Vault, user1, ether('15500'), receiver3, this.pk, this.chainId);
+			// // claim 10.5 tokens
+			await claim(this.Vault, user1, ether('15500'), receiver3, this.pk, this.chainId);
 
 			const currentBlockAfter = await this.BlockData.getBlock();
 			console.log('currentBlockAfter: ', currentBlockAfter.toString());
