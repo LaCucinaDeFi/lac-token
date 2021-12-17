@@ -12,7 +12,7 @@ const Vault = artifacts.require('Vault');
 const BlockData = artifacts.require('BlockData');
 const SampleToken = artifacts.require('SampleToken');
 
-contract.skip('Inclining Simulation', (accounts) => {
+contract('Inclining Simulation', (accounts) => {
 	const owner = accounts[0];
 	const minter = accounts[1];
 	const user1 = accounts[2];
@@ -266,7 +266,7 @@ contract.skip('Inclining Simulation', (accounts) => {
 			);
 		});
 
-		it('should distribute correctly after 2000 blocks', async () => {
+		it.skip('should distribute correctly after 2000 blocks', async () => {
 			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
 			console.log('lastFundUpdatedBlock: ', lastFundUpdatedBlock.toString());
 			console.log('startBlock: ', startBlock.toString());
