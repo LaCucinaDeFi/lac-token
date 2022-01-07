@@ -47,7 +47,7 @@ contract Vault is
    =======================================================================
  */
 
-	CountersUpgradeable.Counter private receiverCounter;
+	CountersUpgradeable.Counter internal receiverCounter;
 
 	/*
    =======================================================================
@@ -158,7 +158,11 @@ contract Vault is
 	 * @param _fundReceivers - indicates the list of receivers
 	 * @param _shares - indicates the list of shares of respective receivers
 	 */
-	function setup(string[] memory _fundReceivers, uint256[] memory _shares) external onlyAdmin {
+	function setup(string[] memory _fundReceivers, uint256[] memory _shares)
+		external
+		virtual
+		onlyAdmin
+	{
 		require(!isSetup, 'Vault: ALREADY_SETUP_DONE');
 		require(
 			_fundReceivers.length > 0 && _fundReceivers.length == _shares.length,
@@ -346,7 +350,7 @@ contract Vault is
 	/**
 	 * @notice This method allows admin to claim all the tokens of specified address to given address
 	 */
-	function claimAllTokens(address _user, address _tokenAddress) external onlyAdmin {
+	function claimAllTokens(address _user, address _tokenAddress) external virtual onlyAdmin {
 		require(_user != address(0), 'Vault: INVALID_USER_ADDRESS');
 		require(
 			_tokenAddress != address(0) && _tokenAddress != address(LacToken),
@@ -367,7 +371,7 @@ contract Vault is
 		address _user,
 		address _tokenAddress,
 		uint256 _amount
-	) external onlyAdmin {
+	) external virtual onlyAdmin {
 		require(_user != address(0), 'Vault: INVALID_USER_ADDRESS');
 		require(
 			_tokenAddress != address(0) && _tokenAddress != address(LacToken),
@@ -385,14 +389,14 @@ contract Vault is
 	/**
 	 * @notice This method allows admin to pause the contract
 	 */
-	function pause() external onlyAdmin {
+	function pause() external virtual onlyAdmin {
 		_pause();
 	}
 
 	/**
 	 * @notice This method allows admin to un-pause the contract
 	 */
-	function unPause() external onlyAdmin {
+	function unPause() external virtual onlyAdmin {
 		_unpause();
 	}
 
@@ -421,6 +425,7 @@ contract Vault is
 	function getPendingAccumulatedFunds(uint256 _receiver)
 		public
 		view
+		virtual
 		returns (uint256 accumulatedFunds)
 	{
 		if (_isPeriodCompleted()) {
@@ -479,7 +484,7 @@ contract Vault is
 	/**
 	 * This method returns the multiplier
 	 */
-	function getMultiplier() public view returns (uint256) {
+	function getMultiplier() public view virtual returns (uint256) {
 		return (block.number - lastFundUpdatedBlock);
 	}
 
@@ -489,6 +494,7 @@ contract Vault is
 	function getCurrentReleaseRate()
 		public
 		view
+		virtual
 		returns (uint256 _currentReleaseRatePerBlock, uint256 _currentReleaseRatePerPeriod)
 	{
 		if (_isPeriodCompleted()) {
@@ -605,6 +611,7 @@ contract Vault is
 	function _getReleaseRateValues(int256 _currentPerPeriodReleaseRate)
 		internal
 		view
+		virtual
 		returns (uint256 perPeriodReleaseRate, uint256 perBlockReleaseRate)
 	{
 		// calculate amount to increase by
