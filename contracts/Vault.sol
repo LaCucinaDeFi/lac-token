@@ -484,6 +484,43 @@ contract Vault is
 	}
 
 	/**
+	 * @notice This method returns the per block and per period release rate
+	 */
+	function getCurrentReleaseRate()
+		public
+		view
+		returns (uint256 _currentReleaseRatePerBlock, uint256 _currentReleaseRatePerPeriod)
+	{
+		if (_isPeriodCompleted()) {
+			uint256 periodEndBlock = startBlock + changeRateAfterPeriod;
+
+			// calculate number of periods before last update happened
+			uint256 totalPeriodsCompleted = (block.number - (periodEndBlock)) / changeRateAfterPeriod;
+
+			// get correct release rate according to periods
+			(_currentReleaseRatePerPeriod, _currentReleaseRatePerBlock) = _getReleaseRateValues(
+				int256(currentReleaseRatePerPeriod)
+			);
+
+			if (totalPeriodsCompleted > 0) {
+				uint256 currentPerPeriodRate = _currentReleaseRatePerPeriod;
+				do {
+					// get correct release rate according to periods
+					(_currentReleaseRatePerPeriod, _currentReleaseRatePerBlock) = _getReleaseRateValues(
+						int256(currentPerPeriodRate)
+					);
+
+					periodEndBlock = periodEndBlock + changeRateAfterPeriod;
+					currentPerPeriodRate = _currentReleaseRatePerPeriod;
+				} while ((block.number - periodEndBlock) > changeRateAfterPeriod);
+			}
+		} else {
+			_currentReleaseRatePerBlock = currentReleaseRatePerBlock;
+			_currentReleaseRatePerPeriod = currentReleaseRatePerPeriod;
+		}
+	}
+
+	/**
 	 * @notice Returns the storage, major, minor, and patch version of the contract.
 	 * @return The storage, major, minor, and patch version of the contract.
 	 */

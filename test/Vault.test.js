@@ -1483,4 +1483,174 @@ contract.only('Vault', (accounts) => {
 			expect(multiplierAfter).to.bignumber.be.eq(new BN('3'));
 		});
 	});
+
+	describe('getCurrentReleaseRate() inclining', () => {
+		let VaultInstance;
+		before('', async () => {
+			// deploy Vault
+			VaultInstance = await deployProxy(Vault, [
+				'Vault',
+				this.LacToken.address,
+				ether('100000'),
+				ether('1000000'),
+				500, // 5%
+				blocksPerWeek, // 1 hours = 1200 blocks
+				blocksPerWeek // 1 hours = 1200 blocks
+			]);
+		});
+
+		it('should return the current release rate correctly', async () => {
+			const lacTokenAddress = await VaultInstance.LacToken();
+			const startBlock = await VaultInstance.startBlock();
+			const currentReleaseRatePerPeriod = await VaultInstance.currentReleaseRatePerPeriod();
+			const currentReleaseRatePerBlock = await VaultInstance.currentReleaseRatePerBlock();
+			const finalReleaseRatePerPeriod = await VaultInstance.finalReleaseRatePerPeriod();
+			const changePercentage = await VaultInstance.changePercentage();
+			const changeRateAfterPeriod = await VaultInstance.changeRateAfterPeriod();
+			const lastFundUpdatedBlock = await VaultInstance.lastFundUpdatedBlock();
+			const totalBlocksPerWeek = await VaultInstance.totalBlocksPerPeriod();
+			const currentRleaseRate = await VaultInstance.getCurrentReleaseRate();
+
+			expect(lacTokenAddress).to.be.eq(this.LacToken.address);
+
+			expect(startBlock).to.bignumber.be.eq(new BN('0'));
+			expect(currentReleaseRatePerPeriod).to.bignumber.be.eq(ether('100000'));
+			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(new BN('83333333333333333333'));
+			expect(currentRleaseRate._currentReleaseRatePerPeriod).to.bignumber.be.eq(ether('100000'));
+			expect(currentRleaseRate._currentReleaseRatePerBlock).to.bignumber.be.eq(
+				new BN('83333333333333333333')
+			);
+			expect(finalReleaseRatePerPeriod).to.bignumber.be.eq(ether('1000000'));
+			expect(changePercentage).to.bignumber.be.eq(new BN('500'));
+			expect(changeRateAfterPeriod).to.bignumber.be.eq(
+				new BN(new BN(Number(time.duration.hours(1).toString()) / 3))
+			);
+			expect(lastFundUpdatedBlock).to.bignumber.be.eq(startBlock);
+			expect(totalBlocksPerWeek).to.bignumber.be.eq(
+				new BN(Number(time.duration.hours(1).toString()) / 3)
+			);
+		});
+
+		it('should return the current release rate correctly without updating the release rate', async () => {
+			const currentBlock = await this.BlockData.getBlock();
+
+			await time.advanceBlockTo(currentBlock.add(new BN(blocksPerWeek)).add(new BN('1')));
+
+			const currentReleaseRatePerPeriod = await VaultInstance.currentReleaseRatePerPeriod();
+			const currentReleaseRatePerBlock = await VaultInstance.currentReleaseRatePerBlock();
+
+			const currentRleaseRate = await VaultInstance.getCurrentReleaseRate();
+
+			expect(currentReleaseRatePerPeriod).to.bignumber.be.eq(ether('100000'));
+			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(new BN('83333333333333333333'));
+			expect(currentRleaseRate._currentReleaseRatePerPeriod).to.bignumber.be.eq(ether('105000'));
+			expect(currentRleaseRate._currentReleaseRatePerBlock).to.bignumber.be.eq(
+				new BN('87500000000000000000')
+			);
+		});
+
+		it('should return the current release rate correctly when max release rate reaches', async () => {
+			const currentBlock = await this.BlockData.getBlock();
+			const totalBlocks = new BN(time.duration.hours('48') / 3);
+
+			await time.advanceBlockTo(currentBlock.add(totalBlocks));
+
+			const currentReleaseRatePerPeriod = await VaultInstance.currentReleaseRatePerPeriod();
+			const currentReleaseRatePerBlock = await VaultInstance.currentReleaseRatePerBlock();
+
+			const currentRleaseRate = await VaultInstance.getCurrentReleaseRate();
+
+			expect(currentReleaseRatePerPeriod).to.bignumber.be.eq(ether('100000'));
+			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(new BN('83333333333333333333'));
+			expect(currentRleaseRate._currentReleaseRatePerPeriod).to.bignumber.be.eq(ether('1000000'));
+			expect(currentRleaseRate._currentReleaseRatePerBlock).to.bignumber.be.eq(
+				new BN('833333333333333333333')
+			);
+		});
+	});
+
+	describe('getCurrentReleaseRate() declining', () => {
+		let VaultInstance;
+		before('', async () => {
+			// deploy Vault
+			VaultInstance = await deployProxy(Vault, [
+				'Vault',
+				this.LacToken.address,
+				ether('100000'),
+				ether('10000'),
+				-500, // -5%
+				blocksPerWeek, // 1 hours = 1200 blocks
+				blocksPerWeek // 1 hours = 1200 blocks
+			]);
+		});
+
+		it('should return the current release rate correctly', async () => {
+			const lacTokenAddress = await VaultInstance.LacToken();
+			const startBlock = await VaultInstance.startBlock();
+			const currentReleaseRatePerPeriod = await VaultInstance.currentReleaseRatePerPeriod();
+			const currentReleaseRatePerBlock = await VaultInstance.currentReleaseRatePerBlock();
+			const finalReleaseRatePerPeriod = await VaultInstance.finalReleaseRatePerPeriod();
+			const changePercentage = await VaultInstance.changePercentage();
+			const changeRateAfterPeriod = await VaultInstance.changeRateAfterPeriod();
+			const lastFundUpdatedBlock = await VaultInstance.lastFundUpdatedBlock();
+			const totalBlocksPerWeek = await VaultInstance.totalBlocksPerPeriod();
+			const currentRleaseRate = await VaultInstance.getCurrentReleaseRate();
+
+			expect(lacTokenAddress).to.be.eq(this.LacToken.address);
+
+			expect(startBlock).to.bignumber.be.eq(new BN('0'));
+			expect(currentReleaseRatePerPeriod).to.bignumber.be.eq(ether('100000'));
+			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(new BN('83333333333333333333'));
+			expect(currentRleaseRate._currentReleaseRatePerPeriod).to.bignumber.be.eq(ether('100000'));
+			expect(currentRleaseRate._currentReleaseRatePerBlock).to.bignumber.be.eq(
+				new BN('83333333333333333333')
+			);
+			expect(finalReleaseRatePerPeriod).to.bignumber.be.eq(ether('10000'));
+			expect(changePercentage).to.bignumber.be.eq(new BN('-500'));
+			expect(changeRateAfterPeriod).to.bignumber.be.eq(
+				new BN(new BN(Number(time.duration.hours(1).toString()) / 3))
+			);
+			expect(lastFundUpdatedBlock).to.bignumber.be.eq(startBlock);
+			expect(totalBlocksPerWeek).to.bignumber.be.eq(
+				new BN(Number(time.duration.hours(1).toString()) / 3)
+			);
+		});
+
+		it('should return the current release rate correctly without updating the release rate', async () => {
+			const currentBlock = await this.BlockData.getBlock();
+
+			await time.advanceBlockTo(currentBlock.add(new BN(blocksPerWeek)).add(new BN('1')));
+
+			const currentReleaseRatePerPeriod = await VaultInstance.currentReleaseRatePerPeriod();
+			const currentReleaseRatePerBlock = await VaultInstance.currentReleaseRatePerBlock();
+
+			const currentRleaseRate = await VaultInstance.getCurrentReleaseRate();
+
+			expect(currentReleaseRatePerPeriod).to.bignumber.be.eq(ether('100000'));
+			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(new BN('83333333333333333333'));
+			expect(currentRleaseRate._currentReleaseRatePerPeriod).to.bignumber.be.eq(ether('95000'));
+			expect(currentRleaseRate._currentReleaseRatePerBlock).to.bignumber.be.eq(
+				new BN('79166666666666666666')
+			);
+		});
+
+		it('should return the current release rate correctly when max release rate reaches', async () => {
+			const currentBlock = await this.BlockData.getBlock();
+			const totalBlocks = new BN(time.duration.hours('48') / 3);
+
+			await time.advanceBlockTo(currentBlock.add(totalBlocks));
+
+			const currentReleaseRatePerPeriod = await VaultInstance.currentReleaseRatePerPeriod();
+			const currentReleaseRatePerBlock = await VaultInstance.currentReleaseRatePerBlock();
+
+			const currentRleaseRate = await VaultInstance.getCurrentReleaseRate();
+
+			expect(currentReleaseRatePerPeriod).to.bignumber.be.eq(ether('100000'));
+			expect(currentReleaseRatePerBlock).to.bignumber.be.eq(new BN('83333333333333333333'));
+			expect(currentRleaseRate._currentReleaseRatePerPeriod).to.bignumber.be.eq(ether('10000'));
+			expect(currentRleaseRate._currentReleaseRatePerBlock).to.bignumber.be.eq(
+				new BN('8333333333333333333')
+			);
+		});
+	});
 });
