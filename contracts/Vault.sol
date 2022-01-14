@@ -9,7 +9,6 @@ import '@openzeppelin/contracts-upgradeable/utils/cryptography/ECDSAUpgradeable.
 import '@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol';
-
 import './library/LacTokenUtils.sol';
 import './interfaces/IVersionedContract.sol';
 
@@ -21,40 +20,33 @@ contract Vault is
 	IVersionedContract
 {
 	using CountersUpgradeable for CountersUpgradeable.Counter;
-
 	/*
-   =======================================================================
-   ======================== Structures ===================================
-   =======================================================================
- */
-
+   	=======================================================================
+   	======================== Structures ===================================
+   	=======================================================================
+	*/
 	struct FundReceiver {
 		string name;
 		uint256 lacShare;
 		uint256 totalAccumulatedFunds;
 	}
 	/*
-   =======================================================================
-   ======================== Constants ====================================
-   =======================================================================
- */
-
+   	=======================================================================
+   	======================== Constants ====================================
+   	=======================================================================
+ 	*/
 	bytes32 public constant VAULT_KEEPER = keccak256('VAULT_KEEPER');
-
 	/*
-   =======================================================================
-   ======================== Private Variables ============================
-   =======================================================================
- */
-
-	CountersUpgradeable.Counter internal receiverCounter;
-
+   	=======================================================================
+   	======================== Private Variables ============================
+   	=======================================================================
+ 	*/
+	CountersUpgradeable.Counter private receiverCounter;
 	/*
-   =======================================================================
-   ======================== Public Variables ============================
-   =======================================================================
- */
-
+   	=======================================================================
+   	======================== Public Variables ============================
+   	=======================================================================
+ 	*/
 	IERC20Upgradeable public LacToken;
 
 	uint256 public totalShares;
@@ -70,18 +62,15 @@ contract Vault is
 	uint256[] public fundReceiversList;
 	bool public isSetup;
 
-	/// fundReceiverId => share percentage
+	/// @notice fundReceiverId => share percentage
 	mapping(uint256 => FundReceiver) public fundReceivers;
-
-	/// userAddress => nonce
+	/// @notice userAddress => nonce
 	mapping(address => uint256) public userNonce;
-
 	/*
-   =======================================================================
-   ======================== Constructor/Initializer ======================
-   =======================================================================
+   	=======================================================================
+   	======================== Constructor/Initializer ======================
+   	=======================================================================
  	*/
-
 	/**
 	 * @notice Used in place of the constructor to allow the contract to be upgradable via proxy.
 	 */
@@ -108,7 +97,6 @@ contract Vault is
 
 		// calculate per block release rate ex. currentReleaseRatePerPeriod / _totalBlocksPerPeriod.
 		currentReleaseRatePerBlock = currentReleaseRatePerPeriod / _totalBlocksPerPeriod;
-
 		finalReleaseRatePerPeriod = _finalReleaseRatePerPeriod;
 		changePercentage = _changePercentage;
 		changeRateAfterPeriod = _changeRateAfterPeriod;
@@ -116,9 +104,9 @@ contract Vault is
 	}
 
 	/*
-   =======================================================================
-   ======================== Events ====================================
-   =======================================================================
+   	=======================================================================
+   	=========================== Events ====================================
+   	=======================================================================
  	*/
 	event Claimed(
 		address account,
@@ -138,20 +126,18 @@ contract Vault is
 	event UpdateTotalBlocksPerPeriod(uint256 newTotalBlocksPerPeriod);
 	event ClaimTokens(address user, address tokenAddress, uint256 amount);
 	/*
-   =======================================================================
-   ======================== Modifiers ====================================
-   =======================================================================
+   	=======================================================================
+   	======================== Modifiers ====================================
+   	=======================================================================
  	*/
-
 	modifier onlyAdmin() {
 		require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()), 'Vault: ONLY_ADMIN_CAN_CALL');
 		_;
 	}
-
 	/*
-   =======================================================================
-   ======================== Public Methods ===============================
-   =======================================================================
+   	=======================================================================
+   	======================== Public Methods ===============================
+   	=======================================================================
  	*/
 	/**
 	 * @notice This method allows admin to setup the startblock and lastfund updated block and adds the initial receivers
@@ -168,11 +154,9 @@ contract Vault is
 			_fundReceivers.length > 0 && _fundReceivers.length == _shares.length,
 			'Vault: INVALID_DATA'
 		);
-
 		for (uint256 i = 0; i < _fundReceivers.length; i++) {
 			_addFundReceiver(_fundReceivers[i], _shares[i]);
 		}
-
 		lastFundUpdatedBlock = block.number;
 		startBlock = block.number;
 		isSetup = true;
@@ -193,10 +177,8 @@ contract Vault is
 	) external virtual nonReentrant whenNotPaused {
 		(bool isExists, ) = LacTokenUtils.isNumberExists(fundReceiversList, _receiverId);
 		require(isExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
-
 		// update allocated funds
 		_updateAllocatedFunds();
-
 		require(
 			_amount > 0 && _amount <= fundReceivers[_receiverId].totalAccumulatedFunds,
 			'Vault: INSUFFICIENT_AMOUNT'
@@ -205,14 +187,10 @@ contract Vault is
 			_verify(_hash(_amount, _receiverId, userNonce[msg.sender], _referenceNumber), _signature),
 			'Vault: INVALID_SIGNATURE'
 		);
-
 		require(LacToken.transfer(msg.sender, _amount), 'Vault: TRANSFER_FAILED');
-
 		fundReceivers[_receiverId].totalAccumulatedFunds -= _amount;
-
 		//update user nonce
 		userNonce[msg.sender] += 1;
-
 		emit Claimed(msg.sender, _receiverId, _amount, block.timestamp, _referenceNumber);
 	}
 
@@ -231,9 +209,7 @@ contract Vault is
 			_fundReceivers.length > 0 && _fundReceivers.length == _shares.length,
 			'Vault: INVALID_DATA'
 		);
-
 		_updateAllocatedFunds();
-
 		for (uint256 i = 0; i < _fundReceivers.length; i++) {
 			_addFundReceiver(_fundReceivers[i], _shares[i]);
 		}
@@ -245,14 +221,10 @@ contract Vault is
 	 */
 	function removeFundReceiver(uint256 _receiverId) external virtual onlyAdmin whenPaused {
 		_updateAllocatedFunds();
-
 		LacTokenUtils.removeNumberFromList(fundReceiversList, _receiverId);
-
 		// update total shares
 		totalShares -= fundReceivers[_receiverId].lacShare;
-
 		delete fundReceivers[_receiverId];
-
 		emit ReceiverRemoved(_receiverId);
 	}
 
@@ -268,17 +240,12 @@ contract Vault is
 		whenPaused
 	{
 		_updateAllocatedFunds();
-
 		(bool isExists, ) = LacTokenUtils.isNumberExists(fundReceiversList, _receiverId);
-
 		require(isExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
 		uint256 currentShare = fundReceivers[_receiverId].lacShare;
-
 		require(currentShare != _newShare && _newShare > 0, 'Vault: INVALID_SHARE');
-
 		totalShares = (totalShares - fundReceivers[_receiverId].lacShare) + _newShare;
 		fundReceivers[_receiverId].lacShare = _newShare;
-
 		emit ReceiverShareUpdated(_receiverId, _newShare);
 	}
 
@@ -294,25 +261,19 @@ contract Vault is
 		uint256 _newShare
 	) external virtual onlyAdmin whenPaused returns (uint256 receiverId) {
 		require(bytes(_newReceiverName).length > 0, 'Vault: INVALID_NAME');
-
 		_updateAllocatedFunds();
-
 		(bool isReceiverExists, ) = LacTokenUtils.isNumberExists(
 			fundReceiversList,
 			_existingReceiverId
 		);
 		require(isReceiverExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
-
 		uint256 currentShare = fundReceivers[_existingReceiverId].lacShare;
 		require(_newShare < currentShare && _newShare > 0, 'Vault: INVALID_SHARE');
-
 		receiverCounter.increment();
 		receiverId = receiverCounter.current();
-
 		fundReceivers[_existingReceiverId].lacShare = currentShare - _newShare;
 		fundReceivers[receiverId].lacShare = _newShare;
 		fundReceiversList.push(receiverId);
-
 		emit ReceiverShrinked(_existingReceiverId, receiverId, _newShare);
 	}
 
@@ -324,7 +285,6 @@ contract Vault is
 	{
 		require(_maxReleaseRate != finalReleaseRatePerPeriod, 'Vault: ALREADY_SET');
 		finalReleaseRatePerPeriod = _maxReleaseRate;
-
 		emit finalReleaseRatePerPeriodUpdated(_maxReleaseRate);
 	}
 
@@ -337,7 +297,6 @@ contract Vault is
 	function updateChangeRateAfterPeriod(uint256 _newPeriods) external virtual onlyAdmin whenPaused {
 		require(_newPeriods != changeRateAfterPeriod, 'Vault: ALREADY_SET');
 		changeRateAfterPeriod = _newPeriods;
-
 		emit ChangeRateAfterPeriod(_newPeriods);
 	}
 
@@ -356,11 +315,8 @@ contract Vault is
 			_tokenAddress != address(0) && _tokenAddress != address(LacToken),
 			'Vault: INVALID_TOKEN_ADDRESS'
 		);
-
 		uint256 tokenAmount = IERC20Upgradeable(_tokenAddress).balanceOf(address(this));
-
 		require(IERC20Upgradeable(_tokenAddress).transfer(_user, tokenAmount));
-
 		emit ClaimTokens(_user, _tokenAddress, tokenAmount);
 	}
 
@@ -377,12 +333,9 @@ contract Vault is
 			_tokenAddress != address(0) && _tokenAddress != address(LacToken),
 			'Vault: INVALID_TOKEN_ADDRESS'
 		);
-
 		uint256 tokenAmount = IERC20Upgradeable(_tokenAddress).balanceOf(address(this));
 		require(_amount > 0 && tokenAmount >= _amount, 'Vault: INSUFFICIENT_BALANCE');
-
 		require(IERC20Upgradeable(_tokenAddress).transfer(_user, _amount));
-
 		emit ClaimTokens(_user, _tokenAddress, _amount);
 	}
 
@@ -401,9 +354,9 @@ contract Vault is
 	}
 
 	/*
-   =======================================================================
-   ======================== Getter Methods ===============================
-   =======================================================================
+   	=======================================================================
+   	======================== Getter Methods ===============================
+   	=======================================================================
  	*/
 	/**
 	 * This method returns the total number of fundReceivers available in vault
@@ -411,14 +364,12 @@ contract Vault is
 	function getTotalFundReceivers() external view virtual returns (uint256) {
 		return fundReceiversList.length;
 	}
-
 	/**
 	 * This method returns the share of specified fund receiver
 	 */
 	function getFundReceiverShare(uint256 _receiver) public view virtual returns (uint256) {
 		return (fundReceivers[_receiver].lacShare * shareMultiplier) / totalShares;
 	}
-
 	/**
 	 * This method returns fundReceiver`s accumulated funds
 	 */
@@ -434,17 +385,13 @@ contract Vault is
 			uint256 perPeriodReleaseRate;
 			uint256 perBlockReleaseRate;
 			uint256 periodEndBlock = startBlock + changeRateAfterPeriod;
-
 			// get total blocks before periods completed i.e periodsLastBlock - lastupdated block
 			totalBlocks = periodEndBlock - lastFundUpdatedBlock;
-
 			accumulatedFunds =
 				(currentReleaseRatePerBlock * totalBlocks * getFundReceiverShare(_receiver)) /
 				shareMultiplier;
-
 			// calculate number of periods before last update happened
 			uint256 totalPeriodsCompleted = (block.number - (periodEndBlock)) / changeRateAfterPeriod;
-
 			if (totalPeriodsCompleted > 0) {
 				currentPerPeriodRate = currentReleaseRatePerPeriod;
 				do {
@@ -452,24 +399,19 @@ contract Vault is
 					(perPeriodReleaseRate, perBlockReleaseRate) = _getReleaseRateValues(
 						int256(currentPerPeriodRate)
 					);
-
 					accumulatedFunds +=
 						(perBlockReleaseRate * changeRateAfterPeriod * getFundReceiverShare(_receiver)) /
 						shareMultiplier;
-
 					periodEndBlock = periodEndBlock + changeRateAfterPeriod;
 					currentPerPeriodRate = perPeriodReleaseRate;
 				} while ((block.number - periodEndBlock) > changeRateAfterPeriod);
 			}
-
 			// total blocks passed in the current period
 			totalBlocks = block.number - periodEndBlock;
-
 			if (totalBlocks > 0) {
 				(perPeriodReleaseRate, perBlockReleaseRate) = _getReleaseRateValues(
 					int256(currentPerPeriodRate)
 				);
-
 				accumulatedFunds +=
 					(perBlockReleaseRate * totalBlocks * getFundReceiverShare(_receiver)) /
 					shareMultiplier;
@@ -480,14 +422,12 @@ contract Vault is
 				shareMultiplier;
 		}
 	}
-
 	/**
 	 * This method returns the multiplier
 	 */
 	function getMultiplier() public view virtual returns (uint256) {
 		return (block.number - lastFundUpdatedBlock);
 	}
-
 	/**
 	 * @notice This method returns the per block and per period release rate
 	 */
@@ -533,11 +473,10 @@ contract Vault is
 	function getVersionNumber() public pure virtual override returns (string memory) {
 		return '1.0.0';
 	}
-
 	/*
-   =======================================================================
-   ======================== Internal Methods =============================
-   =======================================================================
+   	=======================================================================
+   	======================== Internal Methods =============================
+   	=======================================================================
  	*/
 	/**
 	 * @notice This method allows admin to add the allocator to be able to claim/receive LAC tokens.
@@ -549,15 +488,11 @@ contract Vault is
 		returns (uint256 receiverId)
 	{
 		require(bytes(_receiverName).length > 0, 'Vault: INVALID_NAME');
-
 		receiverCounter.increment();
 		receiverId = receiverCounter.current();
-
 		fundReceivers[receiverId] = FundReceiver(_receiverName, _share, 0);
 		totalShares += _share;
-
 		fundReceiversList.push(receiverId);
-
 		emit ReceiverAdded(receiverId, _share);
 	}
 
@@ -573,18 +508,13 @@ contract Vault is
 			// update totalAllocated funds for all fundReceivers
 			for (uint256 i = 0; i < fundReceiversList.length; i++) {
 				uint256 funds = getPendingAccumulatedFunds(fundReceiversList[i]);
-
 				fundReceivers[fundReceiversList[i]].totalAccumulatedFunds += funds;
 			}
-
 			if (_isPeriodCompleted() && currentReleaseRatePerPeriod != finalReleaseRatePerPeriod) {
 				uint256 periodEndBlock = startBlock + changeRateAfterPeriod;
-
 				// calculate number of periods before last update happened
 				uint256 totalPeriodsCompleted = (block.number - (periodEndBlock)) / changeRateAfterPeriod;
-
 				_updateReleaseRate();
-
 				for (uint256 i = 0; i < totalPeriodsCompleted; i++) {
 					if (currentReleaseRatePerPeriod == finalReleaseRatePerPeriod) {
 						break;
@@ -600,10 +530,8 @@ contract Vault is
 		(uint256 perPeriodReleaseRate, uint256 perBlockReleaseRate) = _getReleaseRateValues(
 			int256(currentReleaseRatePerPeriod)
 		);
-
 		currentReleaseRatePerPeriod = perPeriodReleaseRate;
 		currentReleaseRatePerBlock = perBlockReleaseRate;
-
 		// update start time
 		startBlock = startBlock + changeRateAfterPeriod;
 	}
@@ -616,7 +544,6 @@ contract Vault is
 	{
 		// calculate amount to increase by
 		int256 increaseAmount = (_currentPerPeriodReleaseRate * changePercentage) / 10000;
-
 		if (increaseAmount < 0) {
 			if ((_currentPerPeriodReleaseRate + increaseAmount) < int256(finalReleaseRatePerPeriod)) {
 				// set per period release rate to max release rate in case current release rate exceeds min release rate
@@ -632,7 +559,6 @@ contract Vault is
 				perPeriodReleaseRate = uint256(_currentPerPeriodReleaseRate + increaseAmount);
 			}
 		}
-
 		// update per block release rate
 		perBlockReleaseRate = perPeriodReleaseRate / totalBlocksPerPeriod;
 	}

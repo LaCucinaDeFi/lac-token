@@ -63,6 +63,9 @@ module.exports = {
 		},
 		bsc_test: {
 			provider: () =>
+				// new HDWalletProvider(test_data.mnemonic, 'https://data-seed-prebsc-1-s1.binance.org:8545/'),
+				// new HDWalletProvider(test_data.mnemonic, 'https://speedy-nodes-nyc.moralis.io/5cdf759f01143e3019ceb6fa/bsc/testnet'),
+				// new HDWalletProvider(test_data.mnemonic, 'https://data-seed-prebsc-2-s2.binance.org:8545/'),
 				new HDWalletProvider(test_data.mnemonic, 'https://data-seed-prebsc-2-s3.binance.org:8545/'),
 			network_id: 97,
 			gas: 29000000,

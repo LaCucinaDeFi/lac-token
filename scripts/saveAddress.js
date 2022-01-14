@@ -2,8 +2,8 @@ const fs = require('fs');
 const path = require('path');
 
 const saveAddress = async (contractName, address, networkId) => {
-    const fileData = {};
-    const data = {};
+    const fileData = require(`../configurations/${networkId}/Addresses.json`);
+    const data = fileData[networkId];
     data[contractName] = address;
     fileData[networkId] = data;
     const addresssPath = await path.join(`configurations/${networkId}`, 'Addresses.json');
