@@ -435,8 +435,9 @@ contract Vault is
 		public
 		view
 		virtual
-		returns (uint256 _currentReleaseRatePerBlock, uint256 _currentReleaseRatePerPeriod)
+		returns (uint256 _currentReleaseRatePerBlock, uint256 _currentReleaseRatePerPeriod, uint256 _blockNumber)
 	{
+		_blockNumber = block.number;
 		if (_isPeriodCompleted()) {
 			uint256 periodEndBlock = startBlock + changeRateAfterPeriod;
 
