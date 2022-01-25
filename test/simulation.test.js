@@ -12,7 +12,7 @@ const Vault = artifacts.require('Vault');
 const BlockData = artifacts.require('BlockData');
 const SampleToken = artifacts.require('SampleToken');
 
-contract.only('Inclining Simulation', (accounts) => {
+contract('Inclining Simulation', (accounts) => {
 	const owner = accounts[0];
 	const minter = accounts[1];
 	const user1 = accounts[2];
