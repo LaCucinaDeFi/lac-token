@@ -319,7 +319,43 @@ contract Vault is
 		emit ReceiverShrinked(_existingReceiverId, receiverId, _newShare);
 	}
 
-	
+	function updateVaultParams(
+		uint256 _newInitialReleaseRate,
+		uint256 _newfinalReleaseRate,
+		int256 _newPercentage,
+		uint256 _newChangeRatePeriod,
+		uint256 _newBlocksPerPeriod
+	) external virtual onlyAdmin whenPaused {
+		// At least one param must be different
+		require(
+			_newInitialReleaseRate != currentReleaseRatePerPeriod ||
+				_newfinalReleaseRate != finalReleaseRatePerPeriod ||
+				_newPercentage != changePercentage ||
+				_newChangeRatePeriod != changeRateAfterPeriod ||
+				_newBlocksPerPeriod != totalBlocksPerPeriod,
+			'Vault: ALREADY_SET'
+		);
+		_updateAllocatedFunds();
+
+		startBlock = block.number;
+
+		currentReleaseRatePerPeriod = _newInitialReleaseRate;
+		currentReleaseRatePerBlock = currentReleaseRatePerPeriod / _newBlocksPerPeriod;
+
+		finalReleaseRatePerPeriod = _newfinalReleaseRate;
+		changePercentage = _newPercentage;
+		changeRateAfterPeriod = _newChangeRatePeriod;
+		totalBlocksPerPeriod = _newBlocksPerPeriod;
+
+		emit VaultParamsUpdated(
+			currentReleaseRatePerPeriod,
+			finalReleaseRatePerPeriod,
+			changePercentage,
+			changeRateAfterPeriod,
+			totalBlocksPerPeriod
+		);
+	}
+
 	/**
 	 * @notice This method allows admin to claim all the tokens of specified address to given address
 	 */
