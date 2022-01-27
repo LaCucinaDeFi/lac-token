@@ -64,9 +64,8 @@ contract Vault is
 	uint256 public currentReleaseRatePerBlock;
 	uint256 public finalReleaseRatePerPeriod;
 	int256 public changePercentage;
-	uint256 public changeRateAfterPeriod;
+	uint256 public blocksPerPeriod;
 	uint256 public lastFundUpdatedBlock;
-	uint256 public totalBlocksPerPeriod;
 	uint256 public shareMultiplier;
 	uint256[] public fundReceiversList;
 	bool public isSetup;
@@ -92,8 +91,7 @@ contract Vault is
 		uint256 _initialReleaseRatePerPeriod,
 		uint256 _finalReleaseRatePerPeriod,
 		int256 _changePercentage,
-		uint256 _changeRateAfterPeriod,
-		uint256 _totalBlocksPerPeriod
+		uint256 _blocksPerPeriod
 	) external virtual initializer {
 		require(_lacAddress != address(0), 'Vault: INVALID_LAC_ADDRESS');
 
@@ -101,13 +99,9 @@ contract Vault is
 			require(_finalReleaseRatePerPeriod > _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
 		} else if (_changePercentage < 0) {
 			require(_finalReleaseRatePerPeriod < _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
+		} else {
+			require(_finalReleaseRatePerPeriod == _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
 		}
-
-		require(
-			_changeRateAfterPeriod >= _totalBlocksPerPeriod &&
-				_changeRateAfterPeriod % _totalBlocksPerPeriod == 0,
-			'Vault: INVALID_PERIOD'
-		);
 
 		__AccessControl_init();
 		__ReentrancyGuard_init();
@@ -120,12 +114,11 @@ contract Vault is
 		currentReleaseRatePerPeriod = _initialReleaseRatePerPeriod;
 
 		// calculate per block release rate ex. currentReleaseRatePerPeriod / _totalBlocksPerPeriod.
-		currentReleaseRatePerBlock = currentReleaseRatePerPeriod / _totalBlocksPerPeriod;
+		currentReleaseRatePerBlock = currentReleaseRatePerPeriod / _blocksPerPeriod;
 
 		finalReleaseRatePerPeriod = _finalReleaseRatePerPeriod;
 		changePercentage = _changePercentage;
-		changeRateAfterPeriod = _changeRateAfterPeriod;
-		totalBlocksPerPeriod = _totalBlocksPerPeriod;
+		blocksPerPeriod = _blocksPerPeriod;
 	}
 
 	/*
@@ -146,7 +139,8 @@ contract Vault is
 	event ReceiverShareUpdated(
 		uint256 indexed receiver,
 		uint256 indexed oldShare,
-		uint256 indexed newShare
+		uint256 indexed newShare,
+		uint256 block
 	);
 	event ReceiverShrinked(
 		uint256 indexed existingReceiverId,
@@ -159,8 +153,8 @@ contract Vault is
 		uint256 indexed currentReleaseRatePerPeriod,
 		uint256 indexed finalReleaseRatePerPeriod,
 		int256 indexed changePercentage,
-		uint256 changeRateAfterPeriod,
-		uint256 totalBlocksPerPeriod
+		uint256 blocksPerPeriod,
+		uint256 blockNumber
 	);
 
 	/*
@@ -306,7 +300,7 @@ contract Vault is
 		totalShares = (totalShares - fundReceivers[_receiverId].lacShare) + _newShare;
 		fundReceivers[_receiverId].lacShare = _newShare;
 
-		emit ReceiverShareUpdated(_receiverId, currentShare, _newShare);
+		emit ReceiverShareUpdated(_receiverId, currentShare, _newShare, block.number);
 	}
 
 	/**
@@ -347,7 +341,6 @@ contract Vault is
 		uint256 _newInitialReleaseRate,
 		uint256 _newfinalReleaseRate,
 		int256 _newPercentage,
-		uint256 _newChangeRatePeriod,
 		uint256 _newBlocksPerPeriod
 	) external virtual onlyAdmin whenPaused {
 		// At least one param must be different
@@ -355,8 +348,7 @@ contract Vault is
 			_newInitialReleaseRate != currentReleaseRatePerPeriod ||
 				_newfinalReleaseRate != finalReleaseRatePerPeriod ||
 				_newPercentage != changePercentage ||
-				_newChangeRatePeriod != changeRateAfterPeriod ||
-				_newBlocksPerPeriod != totalBlocksPerPeriod,
+				_newBlocksPerPeriod != blocksPerPeriod,
 			'Vault: ALREADY_SET'
 		);
 
@@ -364,13 +356,9 @@ contract Vault is
 			require(_newfinalReleaseRate > _newInitialReleaseRate, 'Vault: INVALID_RATES');
 		} else if (_newPercentage < 0) {
 			require(_newfinalReleaseRate < _newInitialReleaseRate, 'Vault: INVALID_RATES');
+		} else {
+			require(_newfinalReleaseRate == _newInitialReleaseRate, 'Vault: INVALID_RATES');
 		}
-
-		require(
-			_newChangeRatePeriod >= _newBlocksPerPeriod &&
-				_newChangeRatePeriod % _newBlocksPerPeriod == 0,
-			'Vault: INVALID_PERIOD'
-		);
 
 		_updateAllocatedFunds();
 
@@ -381,15 +369,14 @@ contract Vault is
 
 		finalReleaseRatePerPeriod = _newfinalReleaseRate;
 		changePercentage = _newPercentage;
-		changeRateAfterPeriod = _newChangeRatePeriod;
-		totalBlocksPerPeriod = _newBlocksPerPeriod;
+		blocksPerPeriod = _newBlocksPerPeriod;
 
 		emit VaultParamsUpdated(
 			currentReleaseRatePerPeriod,
 			finalReleaseRatePerPeriod,
 			changePercentage,
-			changeRateAfterPeriod,
-			totalBlocksPerPeriod
+			blocksPerPeriod,
+			block.number
 		);
 	}
 
@@ -479,7 +466,7 @@ contract Vault is
 			uint256 currentPerPeriodRate;
 			uint256 perPeriodReleaseRate;
 			uint256 perBlockReleaseRate;
-			uint256 periodEndBlock = startBlock + changeRateAfterPeriod;
+			uint256 periodEndBlock = startBlock + blocksPerPeriod;
 
 			// get total blocks before periods completed i.e periodsLastBlock - lastupdated block
 			totalBlocks = periodEndBlock - lastFundUpdatedBlock;
@@ -489,7 +476,7 @@ contract Vault is
 				shareMultiplier;
 
 			// calculate number of periods before last update happened
-			uint256 totalPeriodsCompleted = (block.number - (periodEndBlock)) / changeRateAfterPeriod;
+			uint256 totalPeriodsCompleted = (block.number - (periodEndBlock)) / blocksPerPeriod;
 
 			if (totalPeriodsCompleted > 0) {
 				currentPerPeriodRate = currentReleaseRatePerPeriod;
@@ -500,12 +487,12 @@ contract Vault is
 					);
 
 					accumulatedFunds +=
-						(perBlockReleaseRate * changeRateAfterPeriod * getFundReceiverShare(_receiver)) /
+						(perBlockReleaseRate * blocksPerPeriod * getFundReceiverShare(_receiver)) /
 						shareMultiplier;
 
-					periodEndBlock = periodEndBlock + changeRateAfterPeriod;
+					periodEndBlock = periodEndBlock + blocksPerPeriod;
 					currentPerPeriodRate = perPeriodReleaseRate;
-				} while ((block.number - periodEndBlock) > changeRateAfterPeriod);
+				} while ((block.number - periodEndBlock) > blocksPerPeriod);
 			}
 
 			// total blocks passed in the current period
@@ -544,10 +531,10 @@ contract Vault is
 		returns (uint256 _currentReleaseRatePerBlock, uint256 _currentReleaseRatePerPeriod)
 	{
 		if (_isPeriodCompleted()) {
-			uint256 periodEndBlock = startBlock + changeRateAfterPeriod;
+			uint256 periodEndBlock = startBlock + blocksPerPeriod;
 
 			// calculate number of periods before last update happened
-			uint256 totalPeriodsCompleted = (block.number - (periodEndBlock)) / changeRateAfterPeriod;
+			uint256 totalPeriodsCompleted = (block.number - (periodEndBlock)) / blocksPerPeriod;
 
 			// get correct release rate according to periods
 			(_currentReleaseRatePerPeriod, _currentReleaseRatePerBlock) = _getReleaseRateValues(
@@ -562,9 +549,9 @@ contract Vault is
 						int256(currentPerPeriodRate)
 					);
 
-					periodEndBlock = periodEndBlock + changeRateAfterPeriod;
+					periodEndBlock = periodEndBlock + blocksPerPeriod;
 					currentPerPeriodRate = _currentReleaseRatePerPeriod;
-				} while ((block.number - periodEndBlock) > changeRateAfterPeriod);
+				} while ((block.number - periodEndBlock) > blocksPerPeriod);
 			}
 		} else {
 			_currentReleaseRatePerBlock = currentReleaseRatePerBlock;
@@ -608,7 +595,7 @@ contract Vault is
 	}
 
 	function _isPeriodCompleted() public view returns (bool isCompleted) {
-		if (block.number > (startBlock + changeRateAfterPeriod)) return true;
+		if (block.number > (startBlock + blocksPerPeriod)) return true;
 	}
 
 	/**
@@ -623,10 +610,10 @@ contract Vault is
 				fundReceivers[fundReceiversList[i]].totalAccumulatedFunds += funds;
 			}
 			if (_isPeriodCompleted() && currentReleaseRatePerPeriod != finalReleaseRatePerPeriod) {
-				uint256 periodEndBlock = startBlock + changeRateAfterPeriod;
+				uint256 periodEndBlock = startBlock + blocksPerPeriod;
 
 				// calculate number of periods before last update happened
-				uint256 totalPeriodsCompleted = (block.number - (periodEndBlock)) / changeRateAfterPeriod;
+				uint256 totalPeriodsCompleted = (block.number - (periodEndBlock)) / blocksPerPeriod;
 
 				_updateReleaseRate();
 
@@ -651,7 +638,7 @@ contract Vault is
 		currentReleaseRatePerBlock = perBlockReleaseRate;
 
 		// update start time
-		startBlock = startBlock + changeRateAfterPeriod;
+		startBlock = startBlock + blocksPerPeriod;
 	}
 
 	function _getReleaseRateValues(int256 _currentPerPeriodReleaseRate)
@@ -680,7 +667,7 @@ contract Vault is
 		}
 
 		// update per block release rate
-		perBlockReleaseRate = perPeriodReleaseRate / totalBlocksPerPeriod;
+		perBlockReleaseRate = perPeriodReleaseRate / blocksPerPeriod;
 	}
 
 	function _hash(
