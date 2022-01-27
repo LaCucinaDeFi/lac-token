@@ -58,6 +58,7 @@ contract Vault is
 	IERC20Upgradeable public LacToken;
 
 	uint256 public totalShares;
+	uint256 public initialStartBlock;
 	uint256 public startBlock;
 	uint256 public currentReleaseRatePerPeriod;
 	uint256 public currentReleaseRatePerBlock;
@@ -95,6 +96,19 @@ contract Vault is
 		uint256 _totalBlocksPerPeriod
 	) external virtual initializer {
 		require(_lacAddress != address(0), 'Vault: INVALID_LAC_ADDRESS');
+
+		if (_changePercentage > 0) {
+			require(_finalReleaseRatePerPeriod > _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
+		} else if (_changePercentage < 0) {
+			require(_finalReleaseRatePerPeriod < _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
+		}
+
+		require(
+			_changeRateAfterPeriod >= _totalBlocksPerPeriod &&
+				_changeRateAfterPeriod % _totalBlocksPerPeriod == 0,
+			'Vault: INVALID_PERIOD'
+		);
+
 		__AccessControl_init();
 		__ReentrancyGuard_init();
 		__EIP712_init(_name, getVersionNumber());
@@ -103,7 +117,6 @@ contract Vault is
 
 		LacToken = IERC20Upgradeable(_lacAddress);
 		shareMultiplier = 1e12;
-
 		currentReleaseRatePerPeriod = _initialReleaseRatePerPeriod;
 
 		// calculate per block release rate ex. currentReleaseRatePerPeriod / _totalBlocksPerPeriod.
@@ -128,18 +141,28 @@ contract Vault is
 		uint256 referenceId
 	);
 
-	event ReceiverAdded(uint256 receiverId, uint256 share);
-	event ReceiverRemoved(uint256 receiverId);
-	event ReceiverShareUpdated(uint256 receiver, uint256 newShare);
-	event ReceiverShrinked(uint256 existingReceiverId, uint256 newReceiverId, uint256 newShare);
-	event ClaimTokens(address user, address tokenAddress, uint256 amount);
+	event ReceiverAdded(uint256 indexed receiverId, uint256 indexed share);
+	event ReceiverRemoved(uint256 indexed receiverId);
+	event ReceiverShareUpdated(
+		uint256 indexed receiver,
+		uint256 indexed oldShare,
+		uint256 indexed newShare
+	);
+	event ReceiverShrinked(
+		uint256 indexed existingReceiverId,
+		uint256 indexed newReceiverId,
+		uint256 indexed oldReceiverShare,
+		uint256 newShare
+	);
+	event ClaimTokens(address indexed user, address indexed tokenAddress, uint256 indexed amount);
 	event VaultParamsUpdated(
-		uint256 currentReleaseRatePerPeriod,
-		uint256 finalReleaseRatePerPeriod,
-		int256 changePercentage,
+		uint256 indexed currentReleaseRatePerPeriod,
+		uint256 indexed finalReleaseRatePerPeriod,
+		int256 indexed changePercentage,
 		uint256 changeRateAfterPeriod,
 		uint256 totalBlocksPerPeriod
 	);
+
 	/*
    =======================================================================
    ======================== Modifiers ====================================
@@ -178,6 +201,7 @@ contract Vault is
 
 		lastFundUpdatedBlock = block.number;
 		startBlock = block.number;
+		initialStartBlock = block.number;
 		isSetup = true;
 	}
 
@@ -282,7 +306,7 @@ contract Vault is
 		totalShares = (totalShares - fundReceivers[_receiverId].lacShare) + _newShare;
 		fundReceivers[_receiverId].lacShare = _newShare;
 
-		emit ReceiverShareUpdated(_receiverId, _newShare);
+		emit ReceiverShareUpdated(_receiverId, currentShare, _newShare);
 	}
 
 	/**
@@ -316,7 +340,7 @@ contract Vault is
 		fundReceivers[receiverId].lacShare = _newShare;
 		fundReceiversList.push(receiverId);
 
-		emit ReceiverShrinked(_existingReceiverId, receiverId, _newShare);
+		emit ReceiverShrinked(_existingReceiverId, receiverId, currentShare, _newShare);
 	}
 
 	function updateVaultParams(
@@ -335,6 +359,19 @@ contract Vault is
 				_newBlocksPerPeriod != totalBlocksPerPeriod,
 			'Vault: ALREADY_SET'
 		);
+
+		if (_newPercentage > 0) {
+			require(_newfinalReleaseRate > _newInitialReleaseRate, 'Vault: INVALID_RATES');
+		} else if (_newPercentage < 0) {
+			require(_newfinalReleaseRate < _newInitialReleaseRate, 'Vault: INVALID_RATES');
+		}
+
+		require(
+			_newChangeRatePeriod >= _newBlocksPerPeriod &&
+				_newChangeRatePeriod % _newBlocksPerPeriod == 0,
+			'Vault: INVALID_PERIOD'
+		);
+
 		_updateAllocatedFunds();
 
 		startBlock = block.number;
