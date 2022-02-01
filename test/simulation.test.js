@@ -12,14 +12,14 @@ const Vault = artifacts.require('Vault');
 const BlockData = artifacts.require('BlockData');
 const SampleToken = artifacts.require('SampleToken');
 
-contract('Inclining Simulation', (accounts) => {
+contract.only('Inclining Simulation', (accounts) => {
 	const owner = accounts[0];
 	const minter = accounts[1];
 	const user1 = accounts[2];
 	const user2 = accounts[3];
 	const user3 = accounts[4];
 	const vaultKeeper = accounts[8];
-	const blocksPerWeek = 100;
+	const blocksPerPeriod = 100;
 	let currentPerBlockAmount;
 	before('deploy contract', async () => {
 		// deploy LAC token
@@ -34,9 +34,8 @@ contract('Inclining Simulation', (accounts) => {
 			this.LacToken.address,
 			ether('100000'), // min
 			ether('1000000'), // max
-			5000, // 5%
-			blocksPerWeek,
-			blocksPerWeek
+			5000, // 50%
+			blocksPerPeriod
 		]);
 
 		// mint LAC tokens to minter
@@ -88,6 +87,7 @@ contract('Inclining Simulation', (accounts) => {
 			receiver2 = 2;
 			receiver3 = 3;
 		});
+
 		it('should distribute correctly after 100 blocks', async () => {
 			console.log('startBlock: ', startBlock.toString());
 
@@ -154,7 +154,7 @@ contract('Inclining Simulation', (accounts) => {
 			await time.advanceBlockTo(blocksToIncrease);
 
 			receiver1Details = await this.Vault.fundReceivers(receiver1);
-			
+
 			// claim 75k tokens
 			await claim(this.Vault, user1, ether('84000'), receiver1, this.pk, this.chainId);
 
@@ -192,7 +192,7 @@ contract('Inclining Simulation', (accounts) => {
 			//add tokens accumulated in 1001st block
 			expect(receiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
 				ether('1000').add(ether('375')) // 375 <= (1500 / block ) * 50%  ???????
- 			);
+			);
 			expect(receiver2DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
 				ether('62500').add(ether('187.5'))
 			);
