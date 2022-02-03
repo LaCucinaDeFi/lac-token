@@ -536,6 +536,465 @@ contract.only('Vault', (accounts) => {
 		});
 	});
 
+	describe('updateVaultParams()', async () => {
+		let currentReleaseRatePerPeriod;
+		let currentReleaseRatePerBlock;
+		let finalReleaseRatePerPeriod;
+		let changePercentage;
+		let blocksPerPeriod;
+		let startBlock;
+		let currentBlock;
+		const receiver1 = 1;
+		const receiver2 = 2;
+		const receiver3 = 4;
+		describe('update currentReleaseRatePerPeriod', () => {
+			it('should update the currentReleaseRatePerPeriod correctly', async () => {
+				currentReleaseRatePerPeriod = await this.Vault.currentReleaseRatePerPeriod();
+				currentReleaseRatePerBlock = await this.Vault.currentReleaseRatePerBlock();
+				finalReleaseRatePerPeriod = await this.Vault.finalReleaseRatePerPeriod();
+				changePercentage = await this.Vault.changePercentage();
+				blocksPerPeriod = await this.Vault.blocksPerPeriod();
+				startBlock = await this.Vault.startBlock();
+
+				const currentReleaserateBefore = await this.Vault.getCurrentReleaseRate();
+
+				const receiver1DetailsBefore = await this.Vault.fundReceivers(receiver1);
+				const receiver1Pending = await this.Vault.getPendingAccumulatedFunds(receiver1);
+
+				const receiver2DetailsBefore = await this.Vault.fundReceivers(receiver2);
+				const receiver2Pending = await this.Vault.getPendingAccumulatedFunds(receiver2);
+
+				const receiver3DetailsBefore = await this.Vault.fundReceivers(receiver3);
+				const receiver3Pending = await this.Vault.getPendingAccumulatedFunds(receiver3);
+
+				await this.Vault.pause();
+
+				//update max release rate
+				await this.Vault.updateVaultParams(
+					ether('200000'),
+					finalReleaseRatePerPeriod,
+					changePercentage,
+					blocksPerPeriod,
+					{
+						from: owner
+					}
+				);
+
+				const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
+				const currentReleaseRatePerBlockAfter = await this.Vault.currentReleaseRatePerBlock();
+				const finalReleaseRatePerPeriodAfter = await this.Vault.finalReleaseRatePerPeriod();
+				const changePercentageAfter = await this.Vault.changePercentage();
+				const blocksPerPeriodAfter = await this.Vault.blocksPerPeriod();
+				const startBlockAfter = await this.Vault.startBlock();
+				currentBlock = await this.BlockData.getBlock();
+
+				const currentReleaseRateAfter = await this.Vault.getCurrentReleaseRate();
+
+				const receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
+				const receiver1PendingAfter = await this.Vault.getPendingAccumulatedFunds(receiver1);
+
+				const receiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);
+				const receiver2PendingAfter = await this.Vault.getPendingAccumulatedFunds(receiver2);
+
+				const receiver3DetailsAfter = await this.Vault.fundReceivers(receiver3);
+				const receiver3PendingAfter = await this.Vault.getPendingAccumulatedFunds(receiver3);
+
+				const receiver1Share = getReceiverShare(
+					currentReleaseRatePerBlock,
+					new BN('8000'),
+					new BN('10000'),
+					new BN('2')
+				);
+
+				const receiver2Share = getReceiverShare(
+					currentReleaseRatePerBlock,
+					new BN('1000'),
+					new BN('10000'),
+					new BN('2')
+				);
+
+				const receiver3Share = getReceiverShare(
+					currentReleaseRatePerBlock,
+					new BN('1000'),
+					new BN('10000'),
+					new BN('2')
+				);
+
+				expect(receiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
+					receiver1DetailsBefore.totalAccumulatedFunds
+						.add(receiver1Pending)
+						.add(receiver1Share)
+						.add(new BN('1'))
+				);
+
+				expect(receiver2DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
+					receiver2DetailsBefore.totalAccumulatedFunds
+						.add(receiver2Pending)
+						.add(receiver2Share)
+						.add(new BN('1'))
+				);
+
+				expect(receiver3DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
+					receiver3DetailsBefore.totalAccumulatedFunds
+						.add(receiver3Pending)
+						.add(receiver3Share)
+						.add(new BN('1'))
+				);
+
+				expect(receiver1PendingAfter).to.bignumber.be.eq(new BN('0'));
+				expect(receiver2PendingAfter).to.bignumber.be.eq(new BN('0'));
+				expect(receiver3PendingAfter).to.bignumber.be.eq(new BN('0'));
+
+				expect(currentReleaserateBefore._currentReleaseRatePerPeriod).to.bignumber.be.eq(
+					currentReleaseRatePerPeriod
+				);
+				expect(currentReleaseRateAfter._currentReleaseRatePerPeriod).to.bignumber.be.eq(
+					currentReleaseRatePerPeriodAfter
+				);
+
+				expect(currentReleaserateBefore._currentReleaseRatePerBlock).to.bignumber.be.eq(
+					currentReleaseRatePerBlock
+				);
+				expect(currentReleaseRateAfter._currentReleaseRatePerBlock).to.bignumber.be.eq(
+					currentReleaseRatePerBlockAfter
+				);
+
+				expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('200000'));
+				expect(finalReleaseRatePerPeriodAfter).to.bignumber.be.eq(finalReleaseRatePerPeriod);
+				expect(changePercentageAfter).to.bignumber.be.eq(changePercentage);
+				expect(blocksPerPeriodAfter).to.bignumber.be.eq(blocksPerPeriod);
+				expect(startBlockAfter).to.bignumber.be.eq(currentBlock);
+			});
+
+			it('should revert when owner tries to update the currentReleaseRatePerPeriod with already set value', async () => {
+				await expectRevert(
+					this.Vault.updateVaultParams(
+						ether('200000'),
+						finalReleaseRatePerPeriod,
+						changePercentage,
+						blocksPerPeriod,
+						{
+							from: owner
+						}
+					),
+					'Vault: ALREADY_SET'
+				);
+			});
+		});
+
+		describe('update finalReleaseRatePerPeriod', () => {
+			it('should update the finalReleaseRatePerPeriod correctly', async () => {
+				// increase blocks
+				const currentBlock1 = await this.BlockData.getBlock();
+				await time.advanceBlockTo(currentBlock1.add(new BN('5')));
+
+				currentReleaseRatePerPeriod = await this.Vault.currentReleaseRatePerPeriod();
+				currentReleaseRatePerBlock = await this.Vault.currentReleaseRatePerBlock();
+				finalReleaseRatePerPeriod = await this.Vault.finalReleaseRatePerPeriod();
+				changePercentage = await this.Vault.changePercentage();
+				blocksPerPeriod = await this.Vault.blocksPerPeriod();
+				startBlock = await this.Vault.startBlock();
+
+				const currentReleaserateBefore = await this.Vault.getCurrentReleaseRate();
+
+				const receiver1DetailsBefore = await this.Vault.fundReceivers(receiver1);
+				const receiver1Pending = await this.Vault.getPendingAccumulatedFunds(receiver1);
+
+				const receiver2DetailsBefore = await this.Vault.fundReceivers(receiver2);
+				const receiver2Pending = await this.Vault.getPendingAccumulatedFunds(receiver2);
+
+				const receiver3DetailsBefore = await this.Vault.fundReceivers(receiver3);
+				const receiver3Pending = await this.Vault.getPendingAccumulatedFunds(receiver3);
+
+				//update max release rate
+				await this.Vault.updateVaultParams(
+					currentReleaseRatePerPeriod,
+					ether('10000000'),
+					changePercentage,
+					blocksPerPeriod,
+					{
+						from: owner
+					}
+				);
+
+				const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
+				const currentReleaseRatePerBlockAfter = await this.Vault.currentReleaseRatePerBlock();
+				const finalReleaseRatePerPeriodAfter = await this.Vault.finalReleaseRatePerPeriod();
+				const changePercentageAfter = await this.Vault.changePercentage();
+				const blocksPerPeriodAfter = await this.Vault.blocksPerPeriod();
+				const startBlockAfter = await this.Vault.startBlock();
+				currentBlock = await this.BlockData.getBlock();
+
+				const currentReleaseRateAfter = await this.Vault.getCurrentReleaseRate();
+
+				const receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
+				const receiver1PendingAfter = await this.Vault.getPendingAccumulatedFunds(receiver1);
+
+				const receiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);
+				const receiver2PendingAfter = await this.Vault.getPendingAccumulatedFunds(receiver2);
+
+				const receiver3DetailsAfter = await this.Vault.fundReceivers(receiver3);
+				const receiver3PendingAfter = await this.Vault.getPendingAccumulatedFunds(receiver3);
+
+				const receiver1Share = getReceiverShare(
+					currentReleaseRatePerBlock,
+					new BN('8000'),
+					new BN('10000'),
+					new BN('1')
+				);
+
+				const receiver2Share = getReceiverShare(
+					currentReleaseRatePerBlock,
+					new BN('1000'),
+					new BN('10000'),
+					new BN('1')
+				);
+
+				const receiver3Share = getReceiverShare(
+					currentReleaseRatePerBlock,
+					new BN('1000'),
+					new BN('10000'),
+					new BN('1')
+				);
+
+				expect(receiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
+					receiver1DetailsBefore.totalAccumulatedFunds
+						.add(receiver1Pending)
+						.add(receiver1Share)
+						.add(new BN('1'))
+				);
+
+				expect(receiver2DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
+					receiver2DetailsBefore.totalAccumulatedFunds
+						.add(receiver2Pending)
+						.add(receiver2Share)
+						.add(new BN('1'))
+				);
+
+				expect(receiver3DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
+					receiver3DetailsBefore.totalAccumulatedFunds
+						.add(receiver3Pending)
+						.add(receiver3Share)
+						.add(new BN('1'))
+				);
+
+				expect(receiver1PendingAfter).to.bignumber.be.eq(new BN('0'));
+				expect(receiver2PendingAfter).to.bignumber.be.eq(new BN('0'));
+				expect(receiver3PendingAfter).to.bignumber.be.eq(new BN('0'));
+
+				expect(currentReleaserateBefore._currentReleaseRatePerPeriod).to.bignumber.be.eq(
+					currentReleaseRatePerPeriod
+				);
+				expect(currentReleaseRateAfter._currentReleaseRatePerPeriod).to.bignumber.be.eq(
+					currentReleaseRatePerPeriodAfter
+				);
+
+				expect(currentReleaserateBefore._currentReleaseRatePerBlock).to.bignumber.be.eq(
+					currentReleaseRatePerBlock
+				);
+				expect(currentReleaseRateAfter._currentReleaseRatePerBlock).to.bignumber.be.eq(
+					currentReleaseRatePerBlockAfter
+				);
+
+				expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(currentReleaseRatePerPeriod);
+				expect(finalReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('10000000'));
+				expect(changePercentageAfter).to.bignumber.be.eq(changePercentage);
+				expect(blocksPerPeriodAfter).to.bignumber.be.eq(blocksPerPeriod);
+				expect(startBlockAfter).to.bignumber.be.eq(currentBlock);
+			});
+
+			it('should revert when owner tries to update the finalReleaseRatePerPeriod with already set value', async () => {
+				await expectRevert(
+					this.Vault.updateVaultParams(
+						currentReleaseRatePerPeriod,
+						ether('10000000'),
+						changePercentage,
+						blocksPerPeriod,
+						{
+							from: owner
+						}
+					),
+					'Vault: ALREADY_SET'
+				);
+			});
+		});
+
+		describe('update changePercentage', () => {
+			it('should update the changePercentage correctly', async () => {
+				currentReleaseRatePerPeriod = await this.Vault.currentReleaseRatePerPeriod();
+				finalReleaseRatePerPeriod = await this.Vault.finalReleaseRatePerPeriod();
+				changePercentage = await this.Vault.changePercentage();
+				blocksPerPeriod = await this.Vault.blocksPerPeriod();
+				startBlock = await this.Vault.startBlock();
+
+				//update max release rate
+				await this.Vault.updateVaultParams(
+					currentReleaseRatePerPeriod,
+					finalReleaseRatePerPeriod,
+					1000,
+					blocksPerPeriod,
+					{
+						from: owner
+					}
+				);
+
+				const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
+				const finalReleaseRatePerPeriodAfter = await this.Vault.finalReleaseRatePerPeriod();
+				const changePercentageAfter = await this.Vault.changePercentage();
+				const blocksPerPeriodAfter = await this.Vault.blocksPerPeriod();
+				const startBlockAfter = await this.Vault.startBlock();
+				currentBlock = await this.BlockData.getBlock();
+
+				expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(currentReleaseRatePerPeriod);
+				expect(finalReleaseRatePerPeriodAfter).to.bignumber.be.eq(finalReleaseRatePerPeriod);
+				expect(changePercentageAfter).to.bignumber.be.eq(new BN('1000'));
+				expect(blocksPerPeriodAfter).to.bignumber.be.eq(blocksPerPeriod);
+				expect(startBlockAfter).to.bignumber.be.eq(currentBlock);
+			});
+
+			it('should revert when owner tries to update the changePercentage with already set value', async () => {
+				await expectRevert(
+					this.Vault.updateVaultParams(
+						currentReleaseRatePerPeriod,
+						finalReleaseRatePerPeriod,
+						1000,
+						blocksPerPeriod,
+						{
+							from: owner
+						}
+					),
+					'Vault: ALREADY_SET'
+				);
+			});
+		});
+
+		describe('update blocksPerPeriod', () => {
+			it('should update the blocksPerPeriod correctly', async () => {
+				currentReleaseRatePerPeriod = await this.Vault.currentReleaseRatePerPeriod();
+				finalReleaseRatePerPeriod = await this.Vault.finalReleaseRatePerPeriod();
+				changePercentage = await this.Vault.changePercentage();
+				blocksPerPeriod = await this.Vault.blocksPerPeriod();
+				startBlock = await this.Vault.startBlock();
+
+				//update max release rate
+				await this.Vault.updateVaultParams(
+					currentReleaseRatePerPeriod,
+					finalReleaseRatePerPeriod,
+					changePercentage,
+					Number(time.duration.hours('2')) / 3,
+					{
+						from: owner
+					}
+				);
+
+				const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
+				const finalReleaseRatePerPeriodAfter = await this.Vault.finalReleaseRatePerPeriod();
+				const changePercentageAfter = await this.Vault.changePercentage();
+				const blocksPerPeriodAfter = await this.Vault.blocksPerPeriod();
+				const startBlockAfter = await this.Vault.startBlock();
+				currentBlock = await this.BlockData.getBlock();
+
+				expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(currentReleaseRatePerPeriod);
+				expect(finalReleaseRatePerPeriodAfter).to.bignumber.be.eq(finalReleaseRatePerPeriod);
+				expect(changePercentageAfter).to.bignumber.be.eq(new BN('1000'));
+				expect(blocksPerPeriodAfter).to.bignumber.be.eq(
+					new BN(Number(time.duration.hours('2')) / 3)
+				);
+				expect(startBlockAfter).to.bignumber.be.eq(currentBlock);
+			});
+
+			it('should revert when owner tries to update the blocksPerPeriod with already set value', async () => {
+				await expectRevert(
+					this.Vault.updateVaultParams(
+						currentReleaseRatePerPeriod,
+						finalReleaseRatePerPeriod,
+						changePercentage,
+						Number(time.duration.hours('2')) / 3,
+						{
+							from: owner
+						}
+					),
+					'Vault: ALREADY_SET'
+				);
+			});
+		});
+
+		describe('update all vault params', () => {
+			it('should update the all vault params correctly', async () => {
+				startBlock = await this.Vault.startBlock();
+
+				//update max release rate
+				await this.Vault.updateVaultParams(
+					ether('100000'),
+					ether('1000000'),
+					new BN('500'),
+					blocksPerPeriod,
+					{
+						from: owner
+					}
+				);
+
+				const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
+				const finalReleaseRatePerPeriodAfter = await this.Vault.finalReleaseRatePerPeriod();
+				const changePercentageAfter = await this.Vault.changePercentage();
+				const blocksPerPeriodAfter = await this.Vault.blocksPerPeriod();
+				blocksPerPeriod = await this.Vault.blocksPerPeriod();
+				const startBlockAfter = await this.Vault.startBlock();
+				currentBlock = await this.BlockData.getBlock();
+
+				expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('100000'));
+				expect(finalReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('1000000'));
+				expect(changePercentageAfter).to.bignumber.be.eq(new BN('500'));
+				expect(blocksPerPeriodAfter).to.bignumber.be.eq(new BN(blocksPerPeriod.toString()));
+				expect(startBlockAfter).to.bignumber.be.eq(currentBlock);
+			});
+
+			it('should revert when owner tries to update the all the params with already set value', async () => {
+				await expectRevert(
+					this.Vault.updateVaultParams(ether('100000'), ether('1000000'), 500, blocksPerPeriod, {
+						from: owner
+					}),
+					'Vault: ALREADY_SET'
+				);
+			});
+
+			it('should revert when non-owner tries to update the currentReleaseRatePerPeriod', async () => {
+				await expectRevert(
+					this.Vault.updateVaultParams(ether('100000'), ether('1000000'), 500, blocksPerPeriod, {
+						from: user1
+					}),
+					'Vault: ONLY_ADMIN_CAN_CALL'
+				);
+			});
+
+			it('should revert when owner tries to update the vault params', async () => {
+				await expectRevert(
+					this.Vault.updateVaultParams(ether('100000'), ether('1000000'), -500, blocksPerPeriod, {
+						from: owner
+					}),
+					'Vault: INVALID_RATES'
+				);
+
+				await expectRevert(
+					this.Vault.updateVaultParams(ether('100000'), ether('10000'), 500, blocksPerPeriod, {
+						from: owner
+					}),
+					'Vault: INVALID_RATES'
+				);
+			});
+
+			it('should revert when owner tries to update the current params when contract is unpaused', async () => {
+				await this.Vault.unPause();
+				await expectRevert(
+					this.Vault.updateVaultParams(ether('100000'), ether('1000000'), 500, blocksPerPeriod, {
+						from: owner
+					}),
+					'Pausable: not paused'
+				);
+			});
+		});
+	});
+
 	describe('claim()', () => {
 		let currentNonce;
 		let receiver1Pendings;
@@ -1480,291 +1939,6 @@ contract.only('Vault', (accounts) => {
 			expect(currentRleaseRate._currentReleaseRatePerBlock).to.bignumber.be.eq(
 				new BN('8333333333333333333')
 			);
-		});
-	});
-
-	describe('updateVaultParams()', async () => {
-		let currentReleaseRatePerPeriod;
-		let finalReleaseRatePerPeriod;
-		let changePercentage;
-		let blocksPerPeriod;
-		let startBlock;
-		let currentBlock;
-
-		describe('update currentReleaseRatePerPeriod', () => {
-			it('should update the currentReleaseRatePerPeriod correctly', async () => {
-				currentReleaseRatePerPeriod = await this.Vault.currentReleaseRatePerPeriod();
-				finalReleaseRatePerPeriod = await this.Vault.finalReleaseRatePerPeriod();
-				changePercentage = await this.Vault.changePercentage();
-				blocksPerPeriod = await this.Vault.blocksPerPeriod();
-				startBlock = await this.Vault.startBlock();
-
-				await this.Vault.pause();
-
-				//update max release rate
-				await this.Vault.updateVaultParams(
-					ether('200000'),
-					finalReleaseRatePerPeriod,
-					changePercentage,
-					blocksPerPeriod,
-					{
-						from: owner
-					}
-				);
-
-				const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
-				const finalReleaseRatePerPeriodAfter = await this.Vault.finalReleaseRatePerPeriod();
-				const changePercentageAfter = await this.Vault.changePercentage();
-				const blocksPerPeriodAfter = await this.Vault.blocksPerPeriod();
-				const startBlockAfter = await this.Vault.startBlock();
-				currentBlock = await this.BlockData.getBlock();
-
-				expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('200000'));
-				expect(finalReleaseRatePerPeriodAfter).to.bignumber.be.eq(finalReleaseRatePerPeriod);
-				expect(changePercentageAfter).to.bignumber.be.eq(changePercentage);
-				expect(blocksPerPeriodAfter).to.bignumber.be.eq(blocksPerPeriod);
-				expect(startBlockAfter).to.bignumber.be.eq(currentBlock);
-			});
-
-			it('should revert when owner tries to update the currentReleaseRatePerPeriod with already set value', async () => {
-				await expectRevert(
-					this.Vault.updateVaultParams(
-						ether('200000'),
-						finalReleaseRatePerPeriod,
-						changePercentage,
-						blocksPerPeriod,
-						{
-							from: owner
-						}
-					),
-					'Vault: ALREADY_SET'
-				);
-			});
-		});
-
-		describe('update finalReleaseRatePerPeriod', () => {
-			it('should update the finalReleaseRatePerPeriod correctly', async () => {
-				currentReleaseRatePerPeriod = await this.Vault.currentReleaseRatePerPeriod();
-				finalReleaseRatePerPeriod = await this.Vault.finalReleaseRatePerPeriod();
-				changePercentage = await this.Vault.changePercentage();
-				blocksPerPeriod = await this.Vault.blocksPerPeriod();
-				startBlock = await this.Vault.startBlock();
-
-				//update max release rate
-				await this.Vault.updateVaultParams(
-					currentReleaseRatePerPeriod,
-					ether('10000000'),
-					changePercentage,
-					blocksPerPeriod,
-					{
-						from: owner
-					}
-				);
-
-				const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
-				const finalReleaseRatePerPeriodAfter = await this.Vault.finalReleaseRatePerPeriod();
-				const changePercentageAfter = await this.Vault.changePercentage();
-				const blocksPerPeriodAfter = await this.Vault.blocksPerPeriod();
-				const startBlockAfter = await this.Vault.startBlock();
-				currentBlock = await this.BlockData.getBlock();
-
-				expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(currentReleaseRatePerPeriod);
-				expect(finalReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('10000000'));
-				expect(changePercentageAfter).to.bignumber.be.eq(changePercentage);
-				expect(blocksPerPeriodAfter).to.bignumber.be.eq(blocksPerPeriod);
-				expect(startBlockAfter).to.bignumber.be.eq(currentBlock);
-			});
-
-			it('should revert when owner tries to update the finalReleaseRatePerPeriod with already set value', async () => {
-				await expectRevert(
-					this.Vault.updateVaultParams(
-						currentReleaseRatePerPeriod,
-						ether('10000000'),
-						changePercentage,
-						blocksPerPeriod,
-						{
-							from: owner
-						}
-					),
-					'Vault: ALREADY_SET'
-				);
-			});
-		});
-
-		describe('update changePercentage', () => {
-			it('should update the changePercentage correctly', async () => {
-				currentReleaseRatePerPeriod = await this.Vault.currentReleaseRatePerPeriod();
-				finalReleaseRatePerPeriod = await this.Vault.finalReleaseRatePerPeriod();
-				changePercentage = await this.Vault.changePercentage();
-				blocksPerPeriod = await this.Vault.blocksPerPeriod();
-				startBlock = await this.Vault.startBlock();
-
-				//update max release rate
-				await this.Vault.updateVaultParams(
-					currentReleaseRatePerPeriod,
-					finalReleaseRatePerPeriod,
-					1000,
-					blocksPerPeriod,
-					{
-						from: owner
-					}
-				);
-
-				const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
-				const finalReleaseRatePerPeriodAfter = await this.Vault.finalReleaseRatePerPeriod();
-				const changePercentageAfter = await this.Vault.changePercentage();
-				const blocksPerPeriodAfter = await this.Vault.blocksPerPeriod();
-				const startBlockAfter = await this.Vault.startBlock();
-				currentBlock = await this.BlockData.getBlock();
-
-				expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(currentReleaseRatePerPeriod);
-				expect(finalReleaseRatePerPeriodAfter).to.bignumber.be.eq(finalReleaseRatePerPeriod);
-				expect(changePercentageAfter).to.bignumber.be.eq(new BN('1000'));
-				expect(blocksPerPeriodAfter).to.bignumber.be.eq(blocksPerPeriod);
-				expect(startBlockAfter).to.bignumber.be.eq(currentBlock);
-			});
-
-			it('should revert when owner tries to update the changePercentage with already set value', async () => {
-				await expectRevert(
-					this.Vault.updateVaultParams(
-						currentReleaseRatePerPeriod,
-						finalReleaseRatePerPeriod,
-						1000,
-						blocksPerPeriod,
-						{
-							from: owner
-						}
-					),
-					'Vault: ALREADY_SET'
-				);
-			});
-		});
-
-		describe('update blocksPerPeriod', () => {
-			it('should update the blocksPerPeriod correctly', async () => {
-				currentReleaseRatePerPeriod = await this.Vault.currentReleaseRatePerPeriod();
-				finalReleaseRatePerPeriod = await this.Vault.finalReleaseRatePerPeriod();
-				changePercentage = await this.Vault.changePercentage();
-				blocksPerPeriod = await this.Vault.blocksPerPeriod();
-				startBlock = await this.Vault.startBlock();
-
-				//update max release rate
-				await this.Vault.updateVaultParams(
-					currentReleaseRatePerPeriod,
-					finalReleaseRatePerPeriod,
-					changePercentage,
-					Number(time.duration.hours('2')) / 3,
-					{
-						from: owner
-					}
-				);
-
-				const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
-				const finalReleaseRatePerPeriodAfter = await this.Vault.finalReleaseRatePerPeriod();
-				const changePercentageAfter = await this.Vault.changePercentage();
-				const blocksPerPeriodAfter = await this.Vault.blocksPerPeriod();
-				const startBlockAfter = await this.Vault.startBlock();
-				currentBlock = await this.BlockData.getBlock();
-
-				expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(currentReleaseRatePerPeriod);
-				expect(finalReleaseRatePerPeriodAfter).to.bignumber.be.eq(finalReleaseRatePerPeriod);
-				expect(changePercentageAfter).to.bignumber.be.eq(new BN('1000'));
-				expect(blocksPerPeriodAfter).to.bignumber.be.eq(
-					new BN(Number(time.duration.hours('2')) / 3)
-				);
-				expect(startBlockAfter).to.bignumber.be.eq(currentBlock);
-			});
-
-			it('should revert when owner tries to update the blocksPerPeriod with already set value', async () => {
-				await expectRevert(
-					this.Vault.updateVaultParams(
-						currentReleaseRatePerPeriod,
-						finalReleaseRatePerPeriod,
-						changePercentage,
-						Number(time.duration.hours('2')) / 3,
-						{
-							from: owner
-						}
-					),
-					'Vault: ALREADY_SET'
-				);
-			});
-		});
-
-		describe('update all vault params', () => {
-			it('should update the all vault params correctly', async () => {
-				startBlock = await this.Vault.startBlock();
-
-				//update max release rate
-				await this.Vault.updateVaultParams(
-					ether('100000'),
-					ether('1000000'),
-					new BN('500'),
-					blocksPerPeriod,
-					{
-						from: owner
-					}
-				);
-
-				const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
-				const finalReleaseRatePerPeriodAfter = await this.Vault.finalReleaseRatePerPeriod();
-				const changePercentageAfter = await this.Vault.changePercentage();
-				const blocksPerPeriodAfter = await this.Vault.blocksPerPeriod();
-				blocksPerPeriod = await this.Vault.blocksPerPeriod();
-				console.log('blocksPerPeriod: ', blocksPerPeriod.toString());
-				const startBlockAfter = await this.Vault.startBlock();
-				currentBlock = await this.BlockData.getBlock();
-
-				expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('100000'));
-				expect(finalReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('1000000'));
-				expect(changePercentageAfter).to.bignumber.be.eq(new BN('500'));
-				expect(blocksPerPeriodAfter).to.bignumber.be.eq(new BN(blocksPerPeriod.toString()));
-				expect(startBlockAfter).to.bignumber.be.eq(currentBlock);
-			});
-
-			it('should revert when owner tries to update the all the params with already set value', async () => {
-				await expectRevert(
-					this.Vault.updateVaultParams(ether('100000'), ether('1000000'), 500, blocksPerPeriod, {
-						from: owner
-					}),
-					'Vault: ALREADY_SET'
-				);
-			});
-
-			it('should revert when non-owner tries to update the currentReleaseRatePerPeriod', async () => {
-				await expectRevert(
-					this.Vault.updateVaultParams(ether('100000'), ether('1000000'), 500, blocksPerPeriod, {
-						from: user1
-					}),
-					'Vault: ONLY_ADMIN_CAN_CALL'
-				);
-			});
-
-			it('should revert when owner tries to update the vault params', async () => {
-				await expectRevert(
-					this.Vault.updateVaultParams(ether('100000'), ether('1000000'), -500, blocksPerPeriod, {
-						from: owner
-					}),
-					'Vault: INVALID_RATES'
-				);
-
-				await expectRevert(
-					this.Vault.updateVaultParams(ether('100000'), ether('10000'), 500, blocksPerPeriod, {
-						from: owner
-					}),
-					'Vault: INVALID_RATES'
-				);
-			});
-
-			it('should revert when owner tries to update the current params when contract is unpaused', async () => {
-				await this.Vault.unPause();
-				await expectRevert(
-					this.Vault.updateVaultParams(ether('100000'), ether('1000000'), 500, blocksPerPeriod, {
-						from: owner
-					}),
-					'Pausable: not paused'
-				);
-			});
 		});
 	});
 });

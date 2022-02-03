@@ -92,16 +92,17 @@ contract Vault is
 		uint256 _finalReleaseRatePerPeriod,
 		int256 _changePercentage,
 		uint256 _blocksPerPeriod
-	) external virtual initializer {
+	)
+		external
+		virtual
+		initializer
+		onlyValidReleaseRates(
+			_initialReleaseRatePerPeriod,
+			_finalReleaseRatePerPeriod,
+			_changePercentage
+		)
+	{
 		require(_lacAddress != address(0), 'Vault: INVALID_LAC_ADDRESS');
-
-		if (_changePercentage > 0) {
-			require(_finalReleaseRatePerPeriod > _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
-		} else if (_changePercentage < 0) {
-			require(_finalReleaseRatePerPeriod < _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
-		} else {
-			require(_finalReleaseRatePerPeriod == _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
-		}
 
 		__AccessControl_init();
 		__ReentrancyGuard_init();
@@ -168,13 +169,28 @@ contract Vault is
 		_;
 	}
 
+	modifier onlyValidReleaseRates(
+		uint256 _initialReleaseRatePerPeriod,
+		uint256 _finalReleaseRatePerPeriod,
+		int256 _changePercentage
+	) {
+		if (_changePercentage > 0) {
+			require(_finalReleaseRatePerPeriod > _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
+		} else if (_changePercentage < 0) {
+			require(_finalReleaseRatePerPeriod < _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
+		} else {
+			require(_finalReleaseRatePerPeriod == _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
+		}
+		_;
+	}
+
 	/*
    =======================================================================
    ======================== Public Methods ===============================
    =======================================================================
  	*/
 	/**
-	 * @notice This method allows admin to setup the startblock and lastfund updated block and adds the initial receivers
+	 * @notice This method allows admin to setup the startblock and	 lastfund updated block and adds the initial receivers
 	 * @param _fundReceivers - indicates the list of receivers
 	 * @param _shares - indicates the list of shares of respective receivers
 	 */
@@ -342,7 +358,13 @@ contract Vault is
 		uint256 _newfinalReleaseRate,
 		int256 _newPercentage,
 		uint256 _newBlocksPerPeriod
-	) external virtual onlyAdmin whenPaused {
+	)
+		external
+		virtual
+		onlyAdmin
+		whenPaused
+		onlyValidReleaseRates(_newInitialReleaseRate, _newfinalReleaseRate, _newPercentage)
+	{
 		// At least one param must be different
 		require(
 			_newInitialReleaseRate != currentReleaseRatePerPeriod ||
@@ -351,14 +373,6 @@ contract Vault is
 				_newBlocksPerPeriod != blocksPerPeriod,
 			'Vault: ALREADY_SET'
 		);
-
-		if (_newPercentage > 0) {
-			require(_newfinalReleaseRate > _newInitialReleaseRate, 'Vault: INVALID_RATES');
-		} else if (_newPercentage < 0) {
-			require(_newfinalReleaseRate < _newInitialReleaseRate, 'Vault: INVALID_RATES');
-		} else {
-			require(_newfinalReleaseRate == _newInitialReleaseRate, 'Vault: INVALID_RATES');
-		}
 
 		_updateAllocatedFunds();
 
