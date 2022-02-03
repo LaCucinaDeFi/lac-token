@@ -1493,7 +1493,6 @@ contract.only('Vault', (accounts) => {
 
 			expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('110250'));
 			expect(currentReleaseRatePerBlockAfter).to.bignumber.be.eq(ether('91.875'));
-			expect(startBlockAfter).to.bignumber.be.eq(new BN('2493'));
 		});
 
 		it('should reach the maxReleaseRatePerWeek on time correctly', async () => {
