@@ -983,6 +983,36 @@ contract.only('Vault', (accounts) => {
 				);
 			});
 
+			it('should revert when owner tries to update the vault params with invalid change percentage', async () => {
+				await expectRevert(
+					this.Vault.updateVaultParams(ether('100000'), ether('1000'), -100, blocksPerPeriod, {
+						from: owner
+					}),
+					'Vault: INVALID_PERCENTAGE'
+				);
+
+				await expectRevert(
+					this.Vault.updateVaultParams(ether('100000'), ether('1000'), -1, blocksPerPeriod, {
+						from: owner
+					}),
+					'Vault: INVALID_PERCENTAGE'
+				);
+
+				await expectRevert(
+					this.Vault.updateVaultParams(ether('100000'), ether('100000000'), 100, blocksPerPeriod, {
+						from: owner
+					}),
+					'Vault: INVALID_PERCENTAGE'
+				);
+
+				await expectRevert(
+					this.Vault.updateVaultParams(ether('100000'), ether('100000000'), 1, blocksPerPeriod, {
+						from: owner
+					}),
+					'Vault: INVALID_PERCENTAGE'
+				);
+			});
+
 			it('should revert when owner tries to update the current params when contract is unpaused', async () => {
 				await this.Vault.unPause();
 				await expectRevert(
@@ -1760,9 +1790,9 @@ contract.only('Vault', (accounts) => {
 		});
 	});
 
-	describe('getMultiplier()', async () => {
+	describe('blocksPassedSinceUpdate()', async () => {
 		it('should get the multiplier correctly', async () => {
-			const multiplier = await this.Vault.getMultiplier();
+			const multiplier = await this.Vault.blocksPassedSinceUpdate();
 
 			const currentBlock = await this.BlockData.getBlock();
 			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
@@ -1770,7 +1800,7 @@ contract.only('Vault', (accounts) => {
 			// increase time by 6 seconds
 			await time.advanceBlockTo(currentBlock.add(new BN('2')));
 
-			const multiplierAfter = await this.Vault.getMultiplier();
+			const multiplierAfter = await this.Vault.blocksPassedSinceUpdate();
 
 			expect(currentBlock).to.bignumber.be.eq(lastFundUpdatedBlock.add(new BN('1')));
 			expect(multiplier).to.bignumber.be.eq(new BN('1'));

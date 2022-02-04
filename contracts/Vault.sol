@@ -175,8 +175,10 @@ contract Vault is
 		int256 _changePercentage
 	) {
 		if (_changePercentage > 0) {
+			require(_changePercentage > 100, 'Vault: INVALID_PERCENTAGE');
 			require(_finalReleaseRatePerPeriod > _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
 		} else if (_changePercentage < 0) {
+			require(_changePercentage < -100, 'Vault: INVALID_PERCENTAGE');
 			require(_finalReleaseRatePerPeriod < _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
 		} else {
 			require(_finalReleaseRatePerPeriod == _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
@@ -379,7 +381,7 @@ contract Vault is
 		startBlock = block.number;
 
 		currentReleaseRatePerPeriod = _newInitialReleaseRate;
-		currentReleaseRatePerBlock = currentReleaseRatePerPeriod / _newBlocksPerPeriod;
+		currentReleaseRatePerBlock = _newInitialReleaseRate / _newBlocksPerPeriod;
 
 		finalReleaseRatePerPeriod = _newfinalReleaseRate;
 		changePercentage = _newPercentage;
@@ -525,7 +527,7 @@ contract Vault is
 			}
 		} else {
 			accumulatedFunds =
-				(currentReleaseRatePerBlock * getMultiplier() * getFundReceiverShare(_receiver)) /
+				(currentReleaseRatePerBlock * blocksPassedSinceUpdate() * getFundReceiverShare(_receiver)) /
 				shareMultiplier;
 		}
 	}
@@ -533,7 +535,7 @@ contract Vault is
 	/**
 	 * This method returns the multiplier
 	 */
-	function getMultiplier() public view virtual returns (uint256) {
+	function blocksPassedSinceUpdate() public view virtual returns (uint256) {
 		return (block.number - lastFundUpdatedBlock);
 	}
 
@@ -618,7 +620,7 @@ contract Vault is
 	 * @notice This method updates the totalAllocated funds for each receiver
 	 */
 	function _updateAllocatedFunds() internal virtual {
-		if (getMultiplier() > 0) {
+		if (blocksPassedSinceUpdate() > 0) {
 			// update totalAllocated funds for all fundReceivers
 			for (uint256 i = 0; i < fundReceiversList.length; i++) {
 				uint256 funds = getPendingAccumulatedFunds(fundReceiversList[i]);
