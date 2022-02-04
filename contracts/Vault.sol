@@ -175,10 +175,10 @@ contract Vault is
 		int256 _changePercentage
 	) {
 		if (_changePercentage > 0) {
-			require(_changePercentage > 100, 'Vault: INVALID_PERCENTAGE');
+			require(_changePercentage >= 100, 'Vault: INVALID_PERCENTAGE');
 			require(_finalReleaseRatePerPeriod > _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
 		} else if (_changePercentage < 0) {
-			require(_changePercentage < -100, 'Vault: INVALID_PERCENTAGE');
+			require(_changePercentage <= -100, 'Vault: INVALID_PERCENTAGE');
 			require(_finalReleaseRatePerPeriod < _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
 		} else {
 			require(_finalReleaseRatePerPeriod == _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');

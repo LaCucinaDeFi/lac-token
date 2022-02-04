@@ -21,7 +21,7 @@ function weiToEth(Value) {
 	return Value.div(ether('1'));
 }
 
-contract.only('Vault', (accounts) => {
+contract('Vault', (accounts) => {
 	const owner = accounts[0];
 	const minter = accounts[1];
 	const user1 = accounts[2];
@@ -985,7 +985,7 @@ contract.only('Vault', (accounts) => {
 
 			it('should revert when owner tries to update the vault params with invalid change percentage', async () => {
 				await expectRevert(
-					this.Vault.updateVaultParams(ether('100000'), ether('1000'), -100, blocksPerPeriod, {
+					this.Vault.updateVaultParams(ether('100000'), ether('1000'), -99, blocksPerPeriod, {
 						from: owner
 					}),
 					'Vault: INVALID_PERCENTAGE'
@@ -999,7 +999,7 @@ contract.only('Vault', (accounts) => {
 				);
 
 				await expectRevert(
-					this.Vault.updateVaultParams(ether('100000'), ether('100000000'), 100, blocksPerPeriod, {
+					this.Vault.updateVaultParams(ether('100000'), ether('100000000'), 99, blocksPerPeriod, {
 						from: owner
 					}),
 					'Vault: INVALID_PERCENTAGE'
