@@ -3,6 +3,8 @@ node_modules
 build
 secrets.json
 secrets.test.json
+bin
+.vscode
 
 .migrations
 

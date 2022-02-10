@@ -20,8 +20,7 @@ module.exports = async function (deployer) {
       ether(VaultParams[network_id].initialRelease), // initial release rate
       ether(VaultParams[network_id].finalRelease), // final release rate 
       Number(VaultParams[network_id].changePercentage) * DECIMAL_FIXER_FOR_PERCENTAGE, // change percentage 
-      Number(VaultParams[network_id].changeRateAfterPeriod), // blocks for change rate period
-      Number(VaultParams[network_id].totalBlocksPerPeriod), // blocks per period
+      Number(VaultParams[network_id].blocksPerPeriod), // blocks per period
     ],
     {
       initializer: "initialize",

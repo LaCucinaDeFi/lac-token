@@ -12,7 +12,7 @@ const Vault = artifacts.require('Vault');
 const BlockData = artifacts.require('BlockData');
 const SampleToken = artifacts.require('SampleToken');
 
-contract.only('Inclining Simulation', (accounts) => {
+contract.only('Simulation1', (accounts) => {
 	const owner = accounts[0];
 	const minter = accounts[1];
 	const user1 = accounts[2];
@@ -32,10 +32,10 @@ contract.only('Inclining Simulation', (accounts) => {
 		this.Vault = await deployProxy(Vault, [
 			'Vault',
 			this.LacToken.address,
-			ether('100000'), // min
-			ether('1000000'), // max
-			5000, // 50%
-			blocksPerPeriod
+			ether('10000'), // min 10k
+			ether('10000'), // max 10k
+			0, // 0%
+			10
 		]);
 
 		// mint LAC tokens to minter
@@ -61,7 +61,7 @@ contract.only('Inclining Simulation', (accounts) => {
 			await this.Vault.grantRole(VAULT_KEEPER, vaultKeeper, {from: owner});
 			await this.Vault.grantRole(VAULT_KEEPER, PUBLIC_ADDRESS);
 
-			// add fund receiver1
+			// add fund receivers
 			await this.Vault.setup(['receiver1', 'receiver2', 'receiver3'], [5000, 2500, 2500], {
 				from: owner
 			});
@@ -88,31 +88,153 @@ contract.only('Inclining Simulation', (accounts) => {
 			receiver3 = 3;
 		});
 
+		it('should distribute correctly after 10 blocks with 0% change percentage', async () => {
+			console.log('startBlock: ', startBlock.toString());
+
+			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
+			console.log('lastFundUpdatedBlock: ', lastFundUpdatedBlock.toString());
+
+			const blocksToIncrease = startBlock.add(new BN('10'));
+
+			receiver1Details = await this.Vault.fundReceivers(receiver1);
+			receiver2Details = await this.Vault.fundReceivers(receiver2);
+			receiver3Details = await this.Vault.fundReceivers(receiver3);
+
+			// increase blocks
+			await time.advanceBlockTo(blocksToIncrease);
+
+			const user1BalanceBefore = await this.LacToken.balanceOf(user1);
+
+			// claim tokens
+			await claim(this.Vault, user1, ether('3000'), receiver1, this.pk, this.chainId);
+
+			receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
+			receiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);
+			receiver3DetailsAfter = await this.Vault.fundReceivers(receiver3);
+
+			console.log(
+				'receiver1DetailsAfter: ',
+				receiver1DetailsAfter.totalAccumulatedFunds.toString()
+			);
+			console.log(
+				'receiver2DetailsAfter: ',
+				receiver2DetailsAfter.totalAccumulatedFunds.toString()
+			);
+			console.log(
+				'receiver3DetailsAfter: ',
+				receiver3DetailsAfter.totalAccumulatedFunds.toString()
+			);
+
+			const user1BalAfter = await this.LacToken.balanceOf(user1);
+			const perBlockAmount = await this.Vault.currentReleaseRatePerBlock();
+
+			expect(user1BalAfter).to.bignumber.be.eq(user1BalanceBefore.add(ether('3000')));
+			expect(perBlockAmount).to.bignumber.be.eq(ether('1000'));
+
+			//add tokens accumulated in last block
+			expect(receiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(ether('2000'));
+			expect(receiver2DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(ether('2500'));
+			expect(receiver3DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(ether('2500'));
+		});
+
+		it('should distribute correctly after 20 blocks', async () => {
+			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
+			console.log('lastFundUpdatedBlock: ', lastFundUpdatedBlock.toString());
+			console.log('startBlock: ', startBlock.toString());
+
+			const blocksToIncrease = startBlock.add(new BN('10'));
+
+			receiver1Details = await this.Vault.fundReceivers(receiver1);
+			receiver2Details = await this.Vault.fundReceivers(receiver2);
+			receiver3Details = await this.Vault.fundReceivers(receiver3);
+
+			// increase blocks
+			await time.advanceBlockTo(blocksToIncrease);
+
+			receiver1Details = await this.Vault.fundReceivers(receiver1);
+
+			const currentReleaseRate = await this.Vault.getCurrentReleaseRate();
+
+			console.log('receiver1Details: ', receiver1Details.totalAccumulatedFunds.toString());
+			console.log('receiver2Details: ', receiver2Details.totalAccumulatedFunds.toString());
+			console.log('receiver3Details: ', receiver3Details.totalAccumulatedFunds.toString());
+
+			const user1BalanceBefore = await this.LacToken.balanceOf(user1);
+
+			// claim tokens
+			await claim(this.Vault, user1, ether('2000'), receiver1, this.pk, this.chainId);
+
+			// claim tokens
+			await claim(this.Vault, user1, ether('2000'), receiver3, this.pk, this.chainId);
+
+			receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
+			receiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);
+			receiver3DetailsAfter = await this.Vault.fundReceivers(receiver3);
+
+			console.log(
+				'receiver1DetailsAfter: ',
+				receiver1DetailsAfter.totalAccumulatedFunds.toString()
+			);
+			console.log(
+				'receiver2DetailsAfter: ',
+				receiver2DetailsAfter.totalAccumulatedFunds.toString()
+			);
+			console.log(
+				'receiver3DetailsAfter: ',
+				receiver3DetailsAfter.totalAccumulatedFunds.toString()
+			);
+
+			const user1BalAfter = await this.LacToken.balanceOf(user1);
+			const perBlockAmount = await this.Vault.currentReleaseRatePerBlock();
+
+			expect(user1BalAfter).to.bignumber.be.eq(user1BalanceBefore.add(ether('4000')));
+			expect(perBlockAmount).to.bignumber.be.eq(ether('1000'));
+
+			expect(currentReleaseRate._currentReleaseRatePerBlock).to.bignumber.be.eq(ether('1000'));
+			expect(currentReleaseRate._currentReleaseRatePerPeriod).to.bignumber.be.eq(ether('10000'));
+
+			//add tokens accumulated in 21st block
+			expect(receiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
+				ether('5000').add(ether('500'))
+			);
+			expect(receiver2DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
+				ether('5000').add(ether('250'))
+			);
+			expect(receiver3DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
+				ether('3000').add(ether('250'))
+			);
+		});
+
 		it('should distribute correctly after 100 blocks', async () => {
-			console.log('startBlock: ', startBlock.toString());
-
 			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
 			console.log('lastFundUpdatedBlock: ', lastFundUpdatedBlock.toString());
+			console.log('startBlock: ', startBlock.toString());
 
-			const blocksToIncrease = startBlock.add(new BN('100'));
+			const blocksToIncrease = startBlock.add(new BN('80'));
 
 			receiver1Details = await this.Vault.fundReceivers(receiver1);
 			receiver2Details = await this.Vault.fundReceivers(receiver2);
 			receiver3Details = await this.Vault.fundReceivers(receiver3);
 
-			// increase 100 blocks
+			// increase blocks
 			await time.advanceBlockTo(blocksToIncrease);
 
-			// claim 50k tokens
-			await claim(this.Vault, user1, ether('40000'), receiver1, this.pk, this.chainId);
+			const user1BalanceBefore = await this.LacToken.balanceOf(user1);
 
-			const currentBlockAfter = await this.BlockData.getBlock();
-			console.log('currentBlockAfter: ', currentBlockAfter.toString());
+			// claim  tokens
+			await claim(this.Vault, user1, ether('5000'), receiver1, this.pk, this.chainId);
+
+			// claim  tokens
+			await claim(this.Vault, user1, ether('15000'), receiver2, this.pk, this.chainId);
+
+			// claim  tokens
+			await claim(this.Vault, user1, ether('3000'), receiver3, this.pk, this.chainId);
 
 			receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
 			receiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);
 			receiver3DetailsAfter = await this.Vault.fundReceivers(receiver3);
 
+		
 			console.log(
 				'receiver1DetailsAfter: ',
 				receiver1DetailsAfter.totalAccumulatedFunds.toString()
@@ -126,111 +248,46 @@ contract.only('Inclining Simulation', (accounts) => {
 				receiver3DetailsAfter.totalAccumulatedFunds.toString()
 			);
 
-			const user1Bal = await this.LacToken.balanceOf(user1);
-			console.log('user1Bal: ', user1Bal.toString());
+			const user1BalAfter = await this.LacToken.balanceOf(user1);
 			const perBlockAmount = await this.Vault.currentReleaseRatePerBlock();
-			console.log('perBlockAmount: ', perBlockAmount.toString());
 
-			expect(perBlockAmount).to.bignumber.be.eq(ether('1500'));
+			expect(user1BalAfter).to.bignumber.be.eq(user1BalanceBefore.add(ether('23000')));
+			expect(perBlockAmount).to.bignumber.be.eq(ether('1000'));
 
-			//add tokens accumulated in 101th block
-			expect(receiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(ether('10000'));
-			expect(receiver2DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(ether('25000'));
-			expect(receiver3DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(ether('25000'));
-		});
-
-		it('should distribute correctly after 200 blocks', async () => {
-			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
-			console.log('lastFundUpdatedBlock: ', lastFundUpdatedBlock.toString());
-			console.log('startBlock: ', startBlock.toString());
-
-			const blocksToIncrease = startBlock.add(new BN('100'));
-
-			receiver1Details = await this.Vault.fundReceivers(receiver1);
-			receiver2Details = await this.Vault.fundReceivers(receiver2);
-			receiver3Details = await this.Vault.fundReceivers(receiver3);
-
-			// increase 100 more blocks
-			await time.advanceBlockTo(blocksToIncrease);
-
-			receiver1Details = await this.Vault.fundReceivers(receiver1);
-
-			// claim 75k tokens
-			await claim(this.Vault, user1, ether('84000'), receiver1, this.pk, this.chainId);
-
-			// claim 25k tokens
-			await claim(this.Vault, user1, ether('25000'), receiver3, this.pk, this.chainId);
-
-			const currentBlockAfter = await this.BlockData.getBlock();
-			console.log('currentBlockAfter: ', currentBlockAfter.toString());
-
-			receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
-			receiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);
-			receiver3DetailsAfter = await this.Vault.fundReceivers(receiver3);
-
-			console.log(
-				'receiver1DetailsAfter: ',
-				receiver1DetailsAfter.totalAccumulatedFunds.toString()
-			);
-			console.log(
-				'receiver2DetailsAfter: ',
-				receiver2DetailsAfter.totalAccumulatedFunds.toString()
-			);
-			console.log(
-				'receiver3DetailsAfter: ',
-				receiver3DetailsAfter.totalAccumulatedFunds.toString()
-			);
-
-			const user1Bal = await this.LacToken.balanceOf(user1);
-			console.log('user1Bal: ', user1Bal.toString());
-
-			const perBlockAmount = await this.Vault.currentReleaseRatePerBlock();
-			console.log('perBlockAmount: ', perBlockAmount.toString());
-
-			expect(perBlockAmount).to.bignumber.be.eq(ether('2250'));
-
-			//add tokens accumulated in 1001st block
+			//add tokens accumulated in last block
 			expect(receiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				ether('1000').add(ether('375')) // 375 <= (1500 / block ) * 50%  ???????
+				ether('40000').add(ether('500').mul(new BN('3'))) // calculate extra block rewards
 			);
 			expect(receiver2DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				ether('62500').add(ether('187.5'))
+				ether('10000').add(ether('250').mul(new BN('3')))
 			);
 			expect(receiver3DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				ether('37500').add(ether('187.5'))
+				ether('20000').add(ether('250').mul(new BN('3')))
 			);
 		});
 
-		it('should distribute correctly after 300 blocks', async () => {
+		it('should distribute correctly after 105 blocks', async () => {
 			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
 			console.log('lastFundUpdatedBlock: ', lastFundUpdatedBlock.toString());
 			console.log('startBlock: ', startBlock.toString());
 
-			const blocksToIncrease = startBlock.add(new BN('100'));
+			const blocksToIncrease = startBlock.add(new BN('5'));
 
 			receiver1Details = await this.Vault.fundReceivers(receiver1);
 			receiver2Details = await this.Vault.fundReceivers(receiver2);
 			receiver3Details = await this.Vault.fundReceivers(receiver3);
 
-			// increase 500 blocks
+			// increase blocks
 			await time.advanceBlockTo(blocksToIncrease);
 
-			// claim 20k tokens
-			await claim(this.Vault, user1, ether('111500'), receiver1, this.pk, this.chainId);
+			const user1BalanceBefore = await this.LacToken.balanceOf(user1);
 
 			// claim 20k tokens
-			await claim(this.Vault, user1, ether('26250'), receiver2, this.pk, this.chainId);
-
-			const currentBlockAfter = await this.BlockData.getBlock();
-			console.log('currentBlockAfter: ', currentBlockAfter.toString());
+			await claim(this.Vault, user1, ether('2000'), receiver1, this.pk, this.chainId);
 
 			receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
 			receiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);
 			receiver3DetailsAfter = await this.Vault.fundReceivers(receiver3);
-
-			// console.log('receiver1Details: ', receiver1Details.totalAccumulatedFunds.toString());
-			// console.log('receiver2Details: ', receiver2Details.totalAccumulatedFunds.toString());
-			// console.log('receiver3Details: ', receiver3Details.totalAccumulatedFunds.toString());
 
 			console.log(
 				'receiver1DetailsAfter: ',
@@ -245,95 +302,22 @@ contract.only('Inclining Simulation', (accounts) => {
 				receiver3DetailsAfter.totalAccumulatedFunds.toString()
 			);
 
-			const user1Bal = await this.LacToken.balanceOf(user1);
-			console.log('user1Bal: ', user1Bal.toString());
+			const user1BalAfter = await this.LacToken.balanceOf(user1);
 			const perBlockAmount = await this.Vault.currentReleaseRatePerBlock();
-			console.log('perBlockAmount: ', perBlockAmount.toString());
 
-			expect(perBlockAmount).to.bignumber.be.eq(ether('3375'));
+			expect(user1BalAfter).to.bignumber.be.eq(user1BalanceBefore.add(ether('2000')));
+			expect(perBlockAmount).to.bignumber.be.eq(ether('1000'));
 
 			//add tokens accumulated in 1501st block
 			expect(receiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				ether('2000').add(ether('375'))
+				ether('40000').add(ether('1500')) // calculate extra block rewards
 			);
 			expect(receiver2DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				ether('62500').add(ether('187.5'))
+				ether('10000').add(ether('250').mul(new BN('7')))
 			);
 			expect(receiver3DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				ether('10250').add(ether('10.5'))
+				ether('20000').add(ether('250').mul(new BN('7')))
 			);
-		});
-
-		it.skip('should distribute correctly after 2000 blocks', async () => {
-			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
-			console.log('lastFundUpdatedBlock: ', lastFundUpdatedBlock.toString());
-			console.log('startBlock: ', startBlock.toString());
-
-			const blocksToIncrease = startBlock.add(new BN('1000'));
-
-			receiver1Details = await this.Vault.fundReceivers(receiver1);
-			receiver2Details = await this.Vault.fundReceivers(receiver2);
-			receiver3Details = await this.Vault.fundReceivers(receiver3);
-
-			// increase 500 blocks
-			await time.advanceBlockTo(blocksToIncrease);
-
-			const receiver1Pending = await this.Vault.getPendingAccumulatedFunds(1);
-			const receiver2Pending = await this.Vault.getPendingAccumulatedFunds(2);
-			const receiver3Pending = await this.Vault.getPendingAccumulatedFunds(3);
-
-			console.log('receiver1Pending: ', receiver1Pending.toString());
-			console.log('receiver2Pending: ', receiver2Pending.toString());
-			console.log('receiver3Pending: ', receiver3Pending.toString());
-
-			// // claim 64k tokens
-			await claim(this.Vault, user1, ether('112500'), receiver1, this.pk, this.chainId);
-
-			// // claim 10.5 tokens
-			await claim(this.Vault, user1, ether('10500'), receiver2, this.pk, this.chainId);
-
-			// // claim 10.5 tokens
-			await claim(this.Vault, user1, ether('15500'), receiver3, this.pk, this.chainId);
-
-			const currentBlockAfter = await this.BlockData.getBlock();
-			console.log('currentBlockAfter: ', currentBlockAfter.toString());
-
-			receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
-			receiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);
-			receiver3DetailsAfter = await this.Vault.fundReceivers(receiver3);
-
-			// console.log('receiver1Details: ', receiver1Details.totalAccumulatedFunds.toString());
-			// console.log('receiver2Details: ', receiver2Details.totalAccumulatedFunds.toString());
-			// console.log('receiver3Details: ', receiver3Details.totalAccumulatedFunds.toString());
-
-			console.log(
-				'receiver1DetailsAfter: ',
-				receiver1DetailsAfter.totalAccumulatedFunds.toString()
-			);
-			console.log(
-				'receiver2DetailsAfter: ',
-				receiver2DetailsAfter.totalAccumulatedFunds.toString()
-			);
-			console.log(
-				'receiver3DetailsAfter: ',
-				receiver3DetailsAfter.totalAccumulatedFunds.toString()
-			);
-
-			const user1Bal = await this.LacToken.balanceOf(user1);
-			console.log('user1Bal: ', user1Bal.toString());
-			const perBlockAmount = await this.Vault.currentReleaseRatePerBlock();
-			console.log('perBlockAmount: ', perBlockAmount.toString());
-
-			expect(perBlockAmount).to.bignumber.be.eq(ether('3375'));
-
-			//add tokens accumulated in 1501st block
-			expect(receiver1DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				ether('1000').add(ether('375'))
-			);
-			expect(receiver2DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(
-				ether('10500').add(ether('11.025'))
-			);
-			expect(receiver3DetailsAfter.totalAccumulatedFunds).to.bignumber.be.eq(ether('11.025'));
 		});
 	});
 });
