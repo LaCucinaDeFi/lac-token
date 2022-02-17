@@ -1,26 +1,29 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import '@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PausableUpgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/utils/cryptography/draft-EIP712Upgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/utils/cryptography/ECDSAUpgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol';
+import '@openzeppelin/contracts/access/AccessControl.sol';
+import '@openzeppelin/contracts/security/ReentrancyGuard.sol';
+import '@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol';
+import '@openzeppelin/contracts/utils/cryptography/draft-EIP712.sol';
+import '@openzeppelin/contracts/utils/cryptography/ECDSA.sol';
+import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import '@openzeppelin/contracts/utils/Counters.sol';
+import '@openzeppelin/contracts/security/Pausable.sol';
 
 import './library/LacTokenUtils.sol';
+import './interfaces/IVaultLogic.sol';
 import './interfaces/IVersionedContract.sol';
+import './interfaces/IMasterVaultBase.sol';
 
-contract Vault is
-	EIP712Upgradeable,
-	AccessControlUpgradeable,
-	ReentrancyGuardUpgradeable,
-	PausableUpgradeable,
+contract LogicContract is
+	EIP712('LogicContract', LogicContract.getVersionNumber()),
+	AccessControl,
+	ReentrancyGuard,
+	Pausable,
+	IVaultLogic,
 	IVersionedContract
 {
-	using CountersUpgradeable for CountersUpgradeable.Counter;
+	using Counters for Counters.Counter;
 
 	/*
    =======================================================================
@@ -47,7 +50,7 @@ contract Vault is
    =======================================================================
  */
 
-	CountersUpgradeable.Counter internal receiverCounter;
+	Counters.Counter internal receiverCounter;
 
 	/*
    =======================================================================
@@ -55,7 +58,8 @@ contract Vault is
    =======================================================================
  */
 
-	IERC20Upgradeable public LacToken;
+	IERC20 public LacToken;
+	IMasterVaultBase public Vault;
 
 	uint256 public totalShares;
 	uint256 public initialStartBlock;
@@ -83,34 +87,29 @@ contract Vault is
  	*/
 
 	/**
-	 * @notice Used in place of the constructor to allow the contract to be upgradable via proxy.
+	 * @notice
 	 */
-	function initialize(
-		string memory _name,
+	constructor(
+		address _vaultAddress,
 		address _lacAddress,
 		uint256 _initialReleaseRatePerPeriod,
 		uint256 _finalReleaseRatePerPeriod,
 		int256 _changePercentage,
 		uint256 _blocksPerPeriod
 	)
-		external
-		virtual
-		initializer
 		onlyValidReleaseRates(
 			_initialReleaseRatePerPeriod,
 			_finalReleaseRatePerPeriod,
 			_changePercentage
 		)
 	{
+		require(_vaultAddress != address(0), 'Vault: INVALID_VAULT_ADDRESS');
 		require(_lacAddress != address(0), 'Vault: INVALID_LAC_ADDRESS');
 
-		__AccessControl_init();
-		__ReentrancyGuard_init();
-		__EIP712_init(_name, getVersionNumber());
-		__Pausable_init();
 		_setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
 
-		LacToken = IERC20Upgradeable(_lacAddress);
+		Vault = IMasterVaultBase(_vaultAddress);
+		LacToken = IERC20(_lacAddress);
 		shareMultiplier = 1e12;
 		currentReleaseRatePerPeriod = _initialReleaseRatePerPeriod;
 
@@ -127,14 +126,6 @@ contract Vault is
    ======================== Events ====================================
    =======================================================================
  	*/
-	event Claimed(
-		address account,
-		uint256 receiverId,
-		uint256 amount,
-		uint256 timestamp,
-		uint256 referenceId
-	);
-
 	event ReceiverAdded(uint256 indexed receiverId, uint256 indexed share);
 	event ReceiverRemoved(uint256 indexed receiverId);
 	event ReceiverShareUpdated(
@@ -191,6 +182,7 @@ contract Vault is
    ======================== Public Methods ===============================
    =======================================================================
  	*/
+
 	/**
 	 * @notice This method allows admin to setup the startblock and	 lastfund updated block and adds the initial receivers
 	 * @param _fundReceivers - indicates the list of receivers
@@ -245,7 +237,8 @@ contract Vault is
 			'Vault: INVALID_SIGNATURE'
 		);
 
-		require(LacToken.transfer(msg.sender, _amount), 'Vault: TRANSFER_FAILED');
+		// claim tokens from Vault
+		require(Vault.claim(msg.sender, address(LacToken), _amount), 'Vault: TRANSFER_FAILED');
 
 		fundReceivers[_receiverId].totalAccumulatedFunds -= _amount;
 
@@ -406,9 +399,9 @@ contract Vault is
 			'Vault: INVALID_TOKEN_ADDRESS'
 		);
 
-		uint256 tokenAmount = IERC20Upgradeable(_tokenAddress).balanceOf(address(this));
+		uint256 tokenAmount = IERC20(_tokenAddress).balanceOf(address(this));
 
-		require(IERC20Upgradeable(_tokenAddress).transfer(_user, tokenAmount));
+		require(IERC20(_tokenAddress).transfer(_user, tokenAmount));
 
 		emit ClaimTokens(_user, _tokenAddress, tokenAmount);
 	}
@@ -427,10 +420,10 @@ contract Vault is
 			'Vault: INVALID_TOKEN_ADDRESS'
 		);
 
-		uint256 tokenAmount = IERC20Upgradeable(_tokenAddress).balanceOf(address(this));
+		uint256 tokenAmount = IERC20(_tokenAddress).balanceOf(address(this));
 		require(_amount > 0 && tokenAmount >= _amount, 'Vault: INSUFFICIENT_BALANCE');
 
-		require(IERC20Upgradeable(_tokenAddress).transfer(_user, _amount));
+		require(IERC20(_tokenAddress).transfer(_user, _amount));
 
 		emit ClaimTokens(_user, _tokenAddress, _amount);
 	}
@@ -454,6 +447,16 @@ contract Vault is
    ======================== Getter Methods ===============================
    =======================================================================
  	*/
+	function supportsInterface(bytes4 interfaceId)
+		public
+		view
+		virtual
+		override(IERC165, AccessControl)
+		returns (bool)
+	{
+		return interfaceId == type(IVaultLogic).interfaceId || interfaceId == type(IERC165).interfaceId;
+	}
+
 	/**
 	 * This method returns the total number of fundReceivers available in vault
 	 */
@@ -726,6 +729,6 @@ contract Vault is
 	}
 
 	function _verify(bytes32 _digest, bytes memory _signature) internal view returns (bool) {
-		return hasRole(VAULT_KEEPER, ECDSAUpgradeable.recover(_digest, _signature));
+		return hasRole(VAULT_KEEPER, ECDSA.recover(_digest, _signature));
 	}
 }
