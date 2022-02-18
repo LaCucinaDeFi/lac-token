@@ -3,7 +3,8 @@ pragma solidity ^0.8.0;
 
 import '@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PausableUpgradeable.sol';
+import '@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol';
+import '@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol';
 
@@ -176,7 +177,28 @@ contract MasterVault is
 
 		logicContracts[_logicContractId].isActive = false;
 
-		emit LogicContractRemoved(
+		emit LogicContractDeactivated(
+			_logicContractId,
+			logicContracts[_logicContractId].logicAddress,
+			block.timestamp
+		);
+	}
+
+	/**
+	 * @notice This method allows owner to reactivate the logic contract
+	 * @param _logicContractId - indicates the id of logic contract to reactivate
+	 */
+	function reactivateLogicContract(uint256 _logicContractId) external virtual override onlyOwner {
+		require(
+			_logicContractId > 0 && _logicContractId <= logicContractCounter.current(),
+			'MasterVault: INVALID_ID'
+		);
+
+		require(!logicContracts[_logicContractId].isActive, 'MasterVault: ALREADY_ACTIVE');
+
+		logicContracts[_logicContractId].isActive = true;
+
+		emit LogicContractReactivated(
 			_logicContractId,
 			logicContracts[_logicContractId].logicAddress,
 			block.timestamp
@@ -289,6 +311,7 @@ contract MasterVault is
 	 */
 	function addSupportedToken(address _tokenAddress) external virtual onlyOwner {
 		require(!supportedTokens[_tokenAddress], 'MasterVault: TOKEN_ALREADY_ADDED');
+		require(_tokenAddress != address(0), 'MasterVault: INVALID_TOKEN');
 		supportedTokens[_tokenAddress] = true;
 
 		emit SupportedTokenAdded(_tokenAddress);
@@ -324,6 +347,14 @@ contract MasterVault is
    ======================== Getter Methods ===============================
    =======================================================================
  	*/
+
+	/**
+	 * @notice This method returns the current logic contract id
+	 */
+	function getCurrentLogicContractId() external view returns (uint256) {
+		return logicContractCounter.current();
+	}
+
 	/**
 	 * @notice This method checks whether the given contract is logic contract or not
 	 */

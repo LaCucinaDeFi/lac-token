@@ -16,12 +16,18 @@ interface IMasterVault is IERC165Upgradeable, IMasterVaultBase {
 		address indexed contractAddress,
 		uint256 indexed timeStamp
 	);
-	event LogicContractRemoved(
+	event LogicContractDeactivated(
 		uint256 indexed logicContractId,
 		address indexed contractAddress,
 		uint256 indexed timeStamp
 	);
 
+	event LogicContractReactivated(
+		uint256 indexed logicContractId,
+		address indexed contractAddress,
+		uint256 indexed timeStamp
+	);
+  
 	event DormantDurationUpdated(uint256 indexed oldDuration, uint256 indexed newDuration);
 
 	function addLogicContract(address _logicContractAddress, string memory _name)
@@ -29,6 +35,8 @@ interface IMasterVault is IERC165Upgradeable, IMasterVaultBase {
 		returns (uint256 logicContractId);
 
 	function deactivateLogicContract(uint256 _logicContractId) external;
+
+	function reactivateLogicContract(uint256 _logicContractId) external;
 
 	function updateDormantDuration(uint256 _newDurationInSeconds) external;
 

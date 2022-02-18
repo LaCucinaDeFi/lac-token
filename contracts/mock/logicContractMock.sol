@@ -10,17 +10,21 @@ import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import '@openzeppelin/contracts/utils/Counters.sol';
 import '@openzeppelin/contracts/security/Pausable.sol';
 
-import './library/LacTokenUtils.sol';
-import './interfaces/IVaultLogic.sol';
-import './interfaces/IVersionedContract.sol';
-import './interfaces/IMasterVaultBase.sol';
+import '../library/LacTokenUtils.sol';
+import '../interfaces/IVaultLogic.sol';
+import '../interfaces/IVersionedContract.sol';
+import '../interfaces/IMasterVaultBase.sol';
 
-contract TokenReleaseScheduleLogic is
-	EIP712('TokenReleaseScheduleLogic', '1.0.0'),
+interface ILogic is IVaultLogic {
+	function getBlock() external view returns (uint256);
+}
+
+contract LogicContractMock is
+	EIP712('LogicContractMock', LogicContractMock.getVersionNumber()),
 	AccessControl,
 	ReentrancyGuard,
 	Pausable,
-	IVaultLogic,
+	ILogic,
 	IVersionedContract
 {
 	using Counters for Counters.Counter;
@@ -465,6 +469,10 @@ contract TokenReleaseScheduleLogic is
    ======================== Getter Methods ===============================
    =======================================================================
  	*/
+	function getBlock() external view virtual override returns (uint256) {
+		return block.number;
+	}
+
 	function supportsInterface(bytes4 interfaceId)
 		public
 		view
@@ -472,7 +480,7 @@ contract TokenReleaseScheduleLogic is
 		override(IERC165, AccessControl)
 		returns (bool)
 	{
-		return interfaceId == type(IVaultLogic).interfaceId || interfaceId == type(IERC165).interfaceId;
+		return interfaceId == type(ILogic).interfaceId || interfaceId == type(IERC165).interfaceId;
 	}
 
 	/**
