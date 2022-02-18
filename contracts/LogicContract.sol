@@ -103,8 +103,8 @@ contract LogicContract is
 			_changePercentage
 		)
 	{
-		require(_vaultAddress != address(0), 'Vault: INVALID_VAULT_ADDRESS');
-		require(_lacAddress != address(0), 'Vault: INVALID_LAC_ADDRESS');
+		require(_vaultAddress != address(0), 'LogicContract: INVALID_VAULT_ADDRESS');
+		require(_lacAddress != address(0), 'LogicContract: INVALID_LAC_ADDRESS');
 
 		_setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
 
@@ -156,7 +156,7 @@ contract LogicContract is
  	*/
 
 	modifier onlyAdmin() {
-		require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()), 'Vault: ONLY_ADMIN_CAN_CALL');
+		require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()), 'LogicContract: ONLY_ADMIN_CAN_CALL');
 		_;
 	}
 
@@ -166,13 +166,13 @@ contract LogicContract is
 		int256 _changePercentage
 	) {
 		if (_changePercentage > 0) {
-			require(_changePercentage >= 100, 'Vault: INVALID_PERCENTAGE');
-			require(_finalReleaseRatePerPeriod > _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
+			require(_changePercentage >= 100, 'LogicContract: INVALID_PERCENTAGE');
+			require(_finalReleaseRatePerPeriod > _initialReleaseRatePerPeriod, 'LogicContract: INVALID_RATES');
 		} else if (_changePercentage < 0) {
-			require(_changePercentage <= -100, 'Vault: INVALID_PERCENTAGE');
-			require(_finalReleaseRatePerPeriod < _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
+			require(_changePercentage <= -100, 'LogicContract: INVALID_PERCENTAGE');
+			require(_finalReleaseRatePerPeriod < _initialReleaseRatePerPeriod, 'LogicContract: INVALID_RATES');
 		} else {
-			require(_finalReleaseRatePerPeriod == _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
+			require(_finalReleaseRatePerPeriod == _initialReleaseRatePerPeriod, 'LogicContract: INVALID_RATES');
 		}
 		_;
 	}
@@ -193,10 +193,10 @@ contract LogicContract is
 		virtual
 		onlyAdmin
 	{
-		require(!isSetup, 'Vault: ALREADY_SETUP_DONE');
+		require(!isSetup, 'LogicContract: ALREADY_SETUP_DONE');
 		require(
 			_fundReceivers.length > 0 && _fundReceivers.length == _shares.length,
-			'Vault: INVALID_DATA'
+			'LogicContract: INVALID_DATA'
 		);
 
 		for (uint256 i = 0; i < _fundReceivers.length; i++) {
@@ -223,22 +223,22 @@ contract LogicContract is
 		bytes calldata _signature
 	) external virtual nonReentrant whenNotPaused {
 		(bool isExists, ) = LacTokenUtils.isNumberExists(fundReceiversList, _receiverId);
-		require(isExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
+		require(isExists, 'LogicContract: RECEIVER_DOES_NOT_EXISTS');
 
 		// update allocated funds
 		_updateAllocatedFunds();
 
 		require(
 			_amount > 0 && _amount <= fundReceivers[_receiverId].totalAccumulatedFunds,
-			'Vault: INSUFFICIENT_AMOUNT'
+			'LogicContract: INSUFFICIENT_AMOUNT'
 		);
 		require(
 			_verify(_hash(_amount, _receiverId, userNonce[msg.sender], _referenceNumber), _signature),
-			'Vault: INVALID_SIGNATURE'
+			'LogicContract: INVALID_SIGNATURE'
 		);
 
 		// claim tokens from Vault
-		require(Vault.claim(msg.sender, address(LacToken), _amount), 'Vault: TRANSFER_FAILED');
+		require(Vault.claim(msg.sender, address(LacToken), _amount), 'LogicContract: TRANSFER_FAILED');
 
 		fundReceivers[_receiverId].totalAccumulatedFunds -= _amount;
 
@@ -261,7 +261,7 @@ contract LogicContract is
 	{
 		require(
 			_fundReceivers.length > 0 && _fundReceivers.length == _shares.length,
-			'Vault: INVALID_DATA'
+			'LogicContract: INVALID_DATA'
 		);
 
 		_updateAllocatedFunds();
@@ -303,10 +303,10 @@ contract LogicContract is
 
 		(bool isExists, ) = LacTokenUtils.isNumberExists(fundReceiversList, _receiverId);
 
-		require(isExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
+		require(isExists, 'LogicContract: RECEIVER_DOES_NOT_EXISTS');
 		uint256 currentShare = fundReceivers[_receiverId].lacShare;
 
-		require(currentShare != _newShare && _newShare > 0, 'Vault: INVALID_SHARE');
+		require(currentShare != _newShare && _newShare > 0, 'LogicContract: INVALID_SHARE');
 
 		totalShares = (totalShares - fundReceivers[_receiverId].lacShare) + _newShare;
 		fundReceivers[_receiverId].lacShare = _newShare;
@@ -325,7 +325,7 @@ contract LogicContract is
 		string memory _newReceiverName,
 		uint256 _newShare
 	) external virtual onlyAdmin whenPaused returns (uint256 receiverId) {
-		require(bytes(_newReceiverName).length > 0, 'Vault: INVALID_NAME');
+		require(bytes(_newReceiverName).length > 0, 'LogicContract: INVALID_NAME');
 
 		_updateAllocatedFunds();
 
@@ -333,10 +333,10 @@ contract LogicContract is
 			fundReceiversList,
 			_existingReceiverId
 		);
-		require(isReceiverExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
+		require(isReceiverExists, 'LogicContract: RECEIVER_DOES_NOT_EXISTS');
 
 		uint256 currentShare = fundReceivers[_existingReceiverId].lacShare;
-		require(_newShare < currentShare && _newShare > 0, 'Vault: INVALID_SHARE');
+		require(_newShare < currentShare && _newShare > 0, 'LogicContract: INVALID_SHARE');
 
 		receiverCounter.increment();
 		receiverId = receiverCounter.current();
@@ -366,7 +366,7 @@ contract LogicContract is
 				_newfinalReleaseRate != finalReleaseRatePerPeriod ||
 				_newPercentage != changePercentage ||
 				_newBlocksPerPeriod != blocksPerPeriod,
-			'Vault: ALREADY_SET'
+			'LogicContract: ALREADY_SET'
 		);
 
 		_updateAllocatedFunds();
@@ -393,10 +393,10 @@ contract LogicContract is
 	 * @notice This method allows admin to claim all the tokens of specified address to given address
 	 */
 	function claimAllTokens(address _user, address _tokenAddress) external virtual onlyAdmin {
-		require(_user != address(0), 'Vault: INVALID_USER_ADDRESS');
+		require(_user != address(0), 'LogicContract: INVALID_USER_ADDRESS');
 		require(
 			_tokenAddress != address(0) && _tokenAddress != address(LacToken),
-			'Vault: INVALID_TOKEN_ADDRESS'
+			'LogicContract: INVALID_TOKEN_ADDRESS'
 		);
 
 		uint256 tokenAmount = IERC20(_tokenAddress).balanceOf(address(this));
@@ -414,14 +414,14 @@ contract LogicContract is
 		address _tokenAddress,
 		uint256 _amount
 	) external virtual onlyAdmin {
-		require(_user != address(0), 'Vault: INVALID_USER_ADDRESS');
+		require(_user != address(0), 'LogicContract: INVALID_USER_ADDRESS');
 		require(
 			_tokenAddress != address(0) && _tokenAddress != address(LacToken),
-			'Vault: INVALID_TOKEN_ADDRESS'
+			'LogicContract: INVALID_TOKEN_ADDRESS'
 		);
 
 		uint256 tokenAmount = IERC20(_tokenAddress).balanceOf(address(this));
-		require(_amount > 0 && tokenAmount >= _amount, 'Vault: INSUFFICIENT_BALANCE');
+		require(_amount > 0 && tokenAmount >= _amount, 'LogicContract: INSUFFICIENT_BALANCE');
 
 		require(IERC20(_tokenAddress).transfer(_user, _amount));
 
@@ -608,7 +608,7 @@ contract LogicContract is
 		internal
 		returns (uint256 receiverId)
 	{
-		require(bytes(_receiverName).length > 0, 'Vault: INVALID_NAME');
+		require(bytes(_receiverName).length > 0, 'LogicContract: INVALID_NAME');
 
 		receiverCounter.increment();
 		receiverId = receiverCounter.current();
