@@ -15,8 +15,8 @@ import './interfaces/IVaultLogic.sol';
 import './interfaces/IVersionedContract.sol';
 import './interfaces/IMasterVaultBase.sol';
 
-contract LogicContract is
-	EIP712('LogicContract', LogicContract.getVersionNumber()),
+contract TokenReleaseScheduleLogic is
+	EIP712('TokenReleaseScheduleLogic', TokenReleaseScheduleLogic.getVersionNumber()),
 	AccessControl,
 	ReentrancyGuard,
 	Pausable,
@@ -58,7 +58,7 @@ contract LogicContract is
    =======================================================================
  */
 
-	IERC20 public LacToken;
+	IERC20 public Token;
 	IMasterVaultBase public Vault;
 
 	uint256 public totalShares;
@@ -91,7 +91,7 @@ contract LogicContract is
 	 */
 	constructor(
 		address _vaultAddress,
-		address _lacAddress,
+		address tokenAddress,
 		uint256 _initialReleaseRatePerPeriod,
 		uint256 _finalReleaseRatePerPeriod,
 		int256 _changePercentage,
@@ -103,13 +103,13 @@ contract LogicContract is
 			_changePercentage
 		)
 	{
-		require(_vaultAddress != address(0), 'LogicContract: INVALID_VAULT_ADDRESS');
-		require(_lacAddress != address(0), 'LogicContract: INVALID_LAC_ADDRESS');
+		require(_vaultAddress != address(0), 'TokenReleaseScheduleLogic: INVALID_VAULT_ADDRESS');
+		require(tokenAddress != address(0), 'TokenReleaseScheduleLogic: INVALID_LAC_ADDRESS');
 
 		_setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
 
 		Vault = IMasterVaultBase(_vaultAddress);
-		LacToken = IERC20(_lacAddress);
+		Token = IERC20(tokenAddress);
 		shareMultiplier = 1e12;
 		currentReleaseRatePerPeriod = _initialReleaseRatePerPeriod;
 
@@ -141,7 +141,7 @@ contract LogicContract is
 		uint256 newShare
 	);
 	event ClaimTokens(address indexed user, address indexed tokenAddress, uint256 indexed amount);
-	event VaultParamsUpdated(
+	event TokenReleaseScheduleLogicParamsUpdated(
 		uint256 indexed currentReleaseRatePerPeriod,
 		uint256 indexed finalReleaseRatePerPeriod,
 		int256 indexed changePercentage,
@@ -156,7 +156,10 @@ contract LogicContract is
  	*/
 
 	modifier onlyAdmin() {
-		require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()), 'LogicContract: ONLY_ADMIN_CAN_CALL');
+		require(
+			hasRole(DEFAULT_ADMIN_ROLE, _msgSender()),
+			'TokenReleaseScheduleLogic: ONLY_ADMIN_CAN_CALL'
+		);
 		_;
 	}
 
@@ -166,13 +169,22 @@ contract LogicContract is
 		int256 _changePercentage
 	) {
 		if (_changePercentage > 0) {
-			require(_changePercentage >= 100, 'LogicContract: INVALID_PERCENTAGE');
-			require(_finalReleaseRatePerPeriod > _initialReleaseRatePerPeriod, 'LogicContract: INVALID_RATES');
+			require(_changePercentage >= 100, 'TokenReleaseScheduleLogic: INVALID_PERCENTAGE');
+			require(
+				_finalReleaseRatePerPeriod > _initialReleaseRatePerPeriod,
+				'TokenReleaseScheduleLogic: INVALID_RATES'
+			);
 		} else if (_changePercentage < 0) {
-			require(_changePercentage <= -100, 'LogicContract: INVALID_PERCENTAGE');
-			require(_finalReleaseRatePerPeriod < _initialReleaseRatePerPeriod, 'LogicContract: INVALID_RATES');
+			require(_changePercentage <= -100, 'TokenReleaseScheduleLogic: INVALID_PERCENTAGE');
+			require(
+				_finalReleaseRatePerPeriod < _initialReleaseRatePerPeriod,
+				'TokenReleaseScheduleLogic: INVALID_RATES'
+			);
 		} else {
-			require(_finalReleaseRatePerPeriod == _initialReleaseRatePerPeriod, 'LogicContract: INVALID_RATES');
+			require(
+				_finalReleaseRatePerPeriod == _initialReleaseRatePerPeriod,
+				'TokenReleaseScheduleLogic: INVALID_RATES'
+			);
 		}
 		_;
 	}
@@ -193,10 +205,10 @@ contract LogicContract is
 		virtual
 		onlyAdmin
 	{
-		require(!isSetup, 'LogicContract: ALREADY_SETUP_DONE');
+		require(!isSetup, 'TokenReleaseScheduleLogic: ALREADY_SETUP_DONE');
 		require(
 			_fundReceivers.length > 0 && _fundReceivers.length == _shares.length,
-			'LogicContract: INVALID_DATA'
+			'TokenReleaseScheduleLogic: INVALID_DATA'
 		);
 
 		for (uint256 i = 0; i < _fundReceivers.length; i++) {
@@ -223,22 +235,25 @@ contract LogicContract is
 		bytes calldata _signature
 	) external virtual nonReentrant whenNotPaused {
 		(bool isExists, ) = LacTokenUtils.isNumberExists(fundReceiversList, _receiverId);
-		require(isExists, 'LogicContract: RECEIVER_DOES_NOT_EXISTS');
+		require(isExists, 'TokenReleaseScheduleLogic: RECEIVER_DOES_NOT_EXISTS');
 
 		// update allocated funds
 		_updateAllocatedFunds();
 
 		require(
 			_amount > 0 && _amount <= fundReceivers[_receiverId].totalAccumulatedFunds,
-			'LogicContract: INSUFFICIENT_AMOUNT'
+			'TokenReleaseScheduleLogic: INSUFFICIENT_AMOUNT'
 		);
 		require(
 			_verify(_hash(_amount, _receiverId, userNonce[msg.sender], _referenceNumber), _signature),
-			'LogicContract: INVALID_SIGNATURE'
+			'TokenReleaseScheduleLogic: INVALID_SIGNATURE'
 		);
 
 		// claim tokens from Vault
-		require(Vault.claim(msg.sender, address(LacToken), _amount), 'LogicContract: TRANSFER_FAILED');
+		require(
+			Vault.claim(msg.sender, address(Token), _amount),
+			'TokenReleaseScheduleLogic: TRANSFER_FAILED'
+		);
 
 		fundReceivers[_receiverId].totalAccumulatedFunds -= _amount;
 
@@ -261,7 +276,7 @@ contract LogicContract is
 	{
 		require(
 			_fundReceivers.length > 0 && _fundReceivers.length == _shares.length,
-			'LogicContract: INVALID_DATA'
+			'TokenReleaseScheduleLogic: INVALID_DATA'
 		);
 
 		_updateAllocatedFunds();
@@ -303,10 +318,10 @@ contract LogicContract is
 
 		(bool isExists, ) = LacTokenUtils.isNumberExists(fundReceiversList, _receiverId);
 
-		require(isExists, 'LogicContract: RECEIVER_DOES_NOT_EXISTS');
+		require(isExists, 'TokenReleaseScheduleLogic: RECEIVER_DOES_NOT_EXISTS');
 		uint256 currentShare = fundReceivers[_receiverId].lacShare;
 
-		require(currentShare != _newShare && _newShare > 0, 'LogicContract: INVALID_SHARE');
+		require(currentShare != _newShare && _newShare > 0, 'TokenReleaseScheduleLogic: INVALID_SHARE');
 
 		totalShares = (totalShares - fundReceivers[_receiverId].lacShare) + _newShare;
 		fundReceivers[_receiverId].lacShare = _newShare;
@@ -325,7 +340,7 @@ contract LogicContract is
 		string memory _newReceiverName,
 		uint256 _newShare
 	) external virtual onlyAdmin whenPaused returns (uint256 receiverId) {
-		require(bytes(_newReceiverName).length > 0, 'LogicContract: INVALID_NAME');
+		require(bytes(_newReceiverName).length > 0, 'TokenReleaseScheduleLogic: INVALID_NAME');
 
 		_updateAllocatedFunds();
 
@@ -333,10 +348,10 @@ contract LogicContract is
 			fundReceiversList,
 			_existingReceiverId
 		);
-		require(isReceiverExists, 'LogicContract: RECEIVER_DOES_NOT_EXISTS');
+		require(isReceiverExists, 'TokenReleaseScheduleLogic: RECEIVER_DOES_NOT_EXISTS');
 
 		uint256 currentShare = fundReceivers[_existingReceiverId].lacShare;
-		require(_newShare < currentShare && _newShare > 0, 'LogicContract: INVALID_SHARE');
+		require(_newShare < currentShare && _newShare > 0, 'TokenReleaseScheduleLogic: INVALID_SHARE');
 
 		receiverCounter.increment();
 		receiverId = receiverCounter.current();
@@ -348,7 +363,7 @@ contract LogicContract is
 		emit ReceiverShrinked(_existingReceiverId, receiverId, currentShare, _newShare);
 	}
 
-	function updateVaultParams(
+	function updateTokenReleaseScheduleLogicParams(
 		uint256 _newInitialReleaseRate,
 		uint256 _newfinalReleaseRate,
 		int256 _newPercentage,
@@ -366,7 +381,7 @@ contract LogicContract is
 				_newfinalReleaseRate != finalReleaseRatePerPeriod ||
 				_newPercentage != changePercentage ||
 				_newBlocksPerPeriod != blocksPerPeriod,
-			'LogicContract: ALREADY_SET'
+			'TokenReleaseScheduleLogic: ALREADY_SET'
 		);
 
 		_updateAllocatedFunds();
@@ -380,7 +395,7 @@ contract LogicContract is
 		changePercentage = _newPercentage;
 		blocksPerPeriod = _newBlocksPerPeriod;
 
-		emit VaultParamsUpdated(
+		emit TokenReleaseScheduleLogicParamsUpdated(
 			currentReleaseRatePerPeriod,
 			finalReleaseRatePerPeriod,
 			changePercentage,
@@ -393,10 +408,10 @@ contract LogicContract is
 	 * @notice This method allows admin to claim all the tokens of specified address to given address
 	 */
 	function claimAllTokens(address _user, address _tokenAddress) external virtual onlyAdmin {
-		require(_user != address(0), 'LogicContract: INVALID_USER_ADDRESS');
+		require(_user != address(0), 'TokenReleaseScheduleLogic: INVALID_USER_ADDRESS');
 		require(
-			_tokenAddress != address(0) && _tokenAddress != address(LacToken),
-			'LogicContract: INVALID_TOKEN_ADDRESS'
+			_tokenAddress != address(0) && _tokenAddress != address(Token),
+			'TokenReleaseScheduleLogic: INVALID_TOKEN_ADDRESS'
 		);
 
 		uint256 tokenAmount = IERC20(_tokenAddress).balanceOf(address(this));
@@ -414,14 +429,17 @@ contract LogicContract is
 		address _tokenAddress,
 		uint256 _amount
 	) external virtual onlyAdmin {
-		require(_user != address(0), 'LogicContract: INVALID_USER_ADDRESS');
+		require(_user != address(0), 'TokenReleaseScheduleLogic: INVALID_USER_ADDRESS');
 		require(
-			_tokenAddress != address(0) && _tokenAddress != address(LacToken),
-			'LogicContract: INVALID_TOKEN_ADDRESS'
+			_tokenAddress != address(0) && _tokenAddress != address(Token),
+			'TokenReleaseScheduleLogic: INVALID_TOKEN_ADDRESS'
 		);
 
 		uint256 tokenAmount = IERC20(_tokenAddress).balanceOf(address(this));
-		require(_amount > 0 && tokenAmount >= _amount, 'LogicContract: INSUFFICIENT_BALANCE');
+		require(
+			_amount > 0 && tokenAmount >= _amount,
+			'TokenReleaseScheduleLogic: INSUFFICIENT_BALANCE'
+		);
 
 		require(IERC20(_tokenAddress).transfer(_user, _amount));
 
@@ -458,7 +476,7 @@ contract LogicContract is
 	}
 
 	/**
-	 * This method returns the total number of fundReceivers available in vault
+	 * This method returns the total number of fundReceivers available in logicContract
 	 */
 	function getTotalFundReceivers() external view virtual returns (uint256) {
 		return fundReceiversList.length;
@@ -608,7 +626,7 @@ contract LogicContract is
 		internal
 		returns (uint256 receiverId)
 	{
-		require(bytes(_receiverName).length > 0, 'LogicContract: INVALID_NAME');
+		require(bytes(_receiverName).length > 0, 'TokenReleaseScheduleLogic: INVALID_NAME');
 
 		receiverCounter.increment();
 		receiverId = receiverCounter.current();
