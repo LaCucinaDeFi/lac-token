@@ -63,7 +63,7 @@ contract.only('MasterVault', (accounts) => {
 		this.chainId = await this.BlockData.getChainId();
 	});
 
-	describe.only('initialize Logic Contract', () => {
+	describe('initialize Logic Contract', () => {
 		it('should initialize Logic Contract correctly', async () => {
 			const vaultAddress = await this.TokenReleaseScheduleLogic.Vault();
 			const lacTokenAddress = await this.TokenReleaseScheduleLogic.Token();
@@ -96,7 +96,7 @@ contract.only('MasterVault', (accounts) => {
 		});
 	});
 
-	describe.only('setup()', () => {
+	describe('setup()', () => {
 		it('should revert when admin tries to setup logicContract with invalid receiver name', async () => {
 			await expectRevert(
 				this.TokenReleaseScheduleLogic.setup([''], [1000], {from: owner}),
@@ -153,7 +153,7 @@ contract.only('MasterVault', (accounts) => {
 		});
 	});
 
-	describe.only('MasterVault', () => {
+	describe('MasterVault', () => {
 		describe('initialize()', () => {
 			it('Should initialize the MasterVault correctly', async () => {
 				const dormantDurationInSeconds = await this.Vault.dormantDurationInSeconds();
@@ -810,7 +810,7 @@ contract.only('MasterVault', (accounts) => {
 
 			expect(fundReceiver1Details.lacShare).to.bignumber.be.eq(new BN('9000'));
 			expect(fundReceiver1Details.totalAccumulatedFunds).to.bignumber.be.eq(
-				new BN('333333333333333333332')
+				new BN('5249999999999999999979')
 			);
 
 			expect(fundReceiver2Details.lacShare).to.bignumber.be.eq(new BN('1000'));
@@ -1875,8 +1875,10 @@ contract.only('MasterVault', (accounts) => {
 
 			expect(currentNonce).to.bignumber.be.eq(new BN('0'));
 			expect(nonceAfter).to.bignumber.be.eq(new BN('1'));
-			expect(user1Bal).to.bignumber.be.eq(new BN('0'));
-			expect(user1BalAfter).to.bignumber.be.eq(receiver1Details.totalAccumulatedFunds);
+			expect(user1Bal).to.bignumber.be.eq(ether('1'));
+			expect(user1BalAfter.sub(ether('1'))).to.bignumber.be.eq(
+				receiver1Details.totalAccumulatedFunds
+			);
 		});
 
 		it('should revert when user tries to claim more amount that receiver accumulated', async () => {
@@ -2509,10 +2511,10 @@ contract.only('MasterVault', (accounts) => {
 			const owenerTokenBalAfter = await this.SampleToken.balanceOf(owner);
 
 			expect(logicContractTokenBalBefore).to.bignumber.be.eq(ether('5'));
-			expect(owenerTokenBalBefore).to.bignumber.be.eq(new BN('0'));
+			expect(owenerTokenBalBefore).to.bignumber.be.eq(ether('5'));
 
 			expect(logicContractTokenBalAfter).to.bignumber.be.eq(new BN('0'));
-			expect(owenerTokenBalAfter).to.bignumber.be.eq(ether('5'));
+			expect(owenerTokenBalAfter).to.bignumber.be.eq(owenerTokenBalBefore.add(ether('5')));
 		});
 
 		it('should revert when non-admin tries to claim all the tokens', async () => {
@@ -2725,14 +2727,14 @@ contract.only('MasterVault', (accounts) => {
 		let VaultInstance;
 		before('', async () => {
 			// deploy Vault
-			VaultInstance = await deployProxy(Vault, [
-				'Vault',
+			VaultInstance = await TokenReleaseScheduleLogic.new(
+				this.Vault.address,
 				this.LacToken.address,
 				ether('100000'),
 				ether('1000000'),
 				500, // 5%
 				blocksPerPeriod // 1 hours = 1200 blocks
-			]);
+			);
 
 			// add fund receiver1 and receiver2
 			await VaultInstance.setup(['receiver1'], [9000], {from: owner});
@@ -2808,14 +2810,14 @@ contract.only('MasterVault', (accounts) => {
 		let VaultInstance;
 		before('', async () => {
 			// deploy Vault
-			VaultInstance = await deployProxy(Vault, [
-				'Vault',
+			VaultInstance = await TokenReleaseScheduleLogic.new(
+				this.Vault.address,
 				this.LacToken.address,
 				ether('100000'),
 				ether('10000'),
 				-500, // -5%
 				blocksPerPeriod // 1 hours = 1200 blocks
-			]);
+			);
 		});
 
 		it('should return the current release rate correctly', async () => {

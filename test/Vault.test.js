@@ -21,7 +21,7 @@ function weiToEth(Value) {
 	return Value.div(ether('1'));
 }
 
-contract('Vault', (accounts) => {
+contract.only('Vault', (accounts) => {
 	const owner = accounts[0];
 	const minter = accounts[1];
 	const user1 = accounts[2];

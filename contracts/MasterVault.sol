@@ -221,8 +221,8 @@ contract MasterVault is
 			'MasterVault: INACTIVE_LOGIC_CONTRACT'
 		);
 		require(
-			logicContracts[logicContractIds[msg.sender]].registrationTime + dormantDurationInSeconds >
-				block.timestamp,
+			block.timestamp >
+				logicContracts[logicContractIds[msg.sender]].registrationTime + dormantDurationInSeconds,
 			'MasterVault: CLAIM_DURING_DORMANT_STATE'
 		);
 		require(_account != address(0), 'MasterVault: INVALID_USER');
@@ -293,7 +293,7 @@ contract MasterVault is
 	) external virtual onlyOwner {
 		require(_user != address(0), 'MasterVault: INVALID_USER_ADDRESS');
 		require(
-			_tokenAddress != address(0) && supportedTokens[_tokenAddress] == false,
+			_tokenAddress != address(0) && !supportedTokens[_tokenAddress],
 			'MasterVault: INVALID_TOKEN_ADDRESS'
 		);
 
