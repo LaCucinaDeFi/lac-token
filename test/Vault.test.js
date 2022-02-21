@@ -659,6 +659,9 @@ contract('Vault', (accounts) => {
 					currentReleaseRatePerBlockAfter
 				);
 
+				expect(currentReleaserateBefore.blockNumber).to.bignumber.be.gt(new BN('0'));
+				expect(currentReleaseRateAfter.blockNumber).to.bignumber.be.eq(currentBlock);
+
 				expect(currentReleaseRatePerPeriodAfter).to.bignumber.be.eq(ether('200000'));
 				expect(finalReleaseRatePerPeriodAfter).to.bignumber.be.eq(finalReleaseRatePerPeriod);
 				expect(changePercentageAfter).to.bignumber.be.eq(changePercentage);
@@ -1072,7 +1075,8 @@ contract('Vault', (accounts) => {
 				receiver1,
 				5,
 				this.Vault.address,
-				this.chainId
+				this.chainId,
+				'Vault'
 			);
 
 			const user1Bal = await this.LacToken.balanceOf(user1);
@@ -1111,7 +1115,8 @@ contract('Vault', (accounts) => {
 				receiver1,
 				6,
 				this.Vault.address,
-				this.chainId
+				this.chainId,
+				'Vault'
 			);
 
 			//claim tokens
@@ -1132,7 +1137,8 @@ contract('Vault', (accounts) => {
 				receiver1,
 				7,
 				this.Vault.address,
-				this.chainId
+				this.chainId,
+				'Vault'
 			);
 
 			//claim tokens
@@ -1153,7 +1159,8 @@ contract('Vault', (accounts) => {
 				8,
 				8,
 				this.Vault.address,
-				this.chainId
+				this.chainId,
+				'Vault'
 			);
 
 			//claim tokens
@@ -1174,7 +1181,8 @@ contract('Vault', (accounts) => {
 				receiver1,
 				9,
 				this.Vault.address,
-				this.chainId
+				this.chainId,
+				'Vault'
 			);
 
 			//claim tokens
@@ -1193,7 +1201,8 @@ contract('Vault', (accounts) => {
 				receiver1,
 				5,
 				this.Vault.address,
-				this.chainId
+				this.chainId,
+				'Vault'
 			);
 
 			//claim tokens
@@ -1212,7 +1221,8 @@ contract('Vault', (accounts) => {
 				receiver2,
 				6,
 				this.Vault.address,
-				this.chainId
+				this.chainId,
+				'Vault'
 			);
 
 			//claim tokens
@@ -1231,7 +1241,8 @@ contract('Vault', (accounts) => {
 				receiver1,
 				7,
 				this.BlockData.address,
-				this.chainId
+				this.chainId,
+				'Vault'
 			);
 
 			//claim tokens
@@ -1250,7 +1261,8 @@ contract('Vault', (accounts) => {
 				receiver1,
 				8,
 				this.Vault.address,
-				new BN('111')
+				new BN('111'),
+				'Vault'
 			);
 
 			//claim tokens
@@ -1269,7 +1281,8 @@ contract('Vault', (accounts) => {
 				receiver1,
 				8,
 				this.Vault.address,
-				new BN('111')
+				new BN('111'),
+				'Vault'
 			);
 
 			//claim tokens
@@ -1290,7 +1303,8 @@ contract('Vault', (accounts) => {
 				receiver1,
 				8,
 				this.Vault.address,
-				this.chainId
+				this.chainId,
+				'Vault'
 			);
 
 			//claim tokens
@@ -1311,7 +1325,8 @@ contract('Vault', (accounts) => {
 				receiver1,
 				9,
 				this.Vault.address,
-				this.chainId
+				this.chainId,
+				'Vault'
 			);
 
 			//claim tokens
@@ -1333,7 +1348,8 @@ contract('Vault', (accounts) => {
 				receiver1,
 				3,
 				this.Vault.address,
-				this.chainId
+				this.chainId,
+				'Vault'
 			);
 
 			//claim tokens
@@ -1346,7 +1362,7 @@ contract('Vault', (accounts) => {
 		});
 
 		it('it should update the allocated funds correctly', async () => {
-			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId, 'Vault');
 
 			const lastFundUpdatedBlock = await this.Vault.lastFundUpdatedBlock();
 
@@ -1367,7 +1383,7 @@ contract('Vault', (accounts) => {
 			receiver3Pendings = await this.Vault.getPendingAccumulatedFunds(receiver3);
 
 			//update allocated funds
-			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId, 'Vault');
 
 			const lastFundUpdatedBlockAfter = await this.Vault.lastFundUpdatedBlock();
 
@@ -1487,7 +1503,7 @@ contract('Vault', (accounts) => {
 			await time.advanceBlockTo(currentBlock.add(totalBlocks).add(new BN('5')));
 
 			// update allocated funds
-			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId, 'Vault');
 
 			// 1270 - 69 / 1200
 			const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
@@ -1551,7 +1567,7 @@ contract('Vault', (accounts) => {
 			// increase time
 			await time.advanceBlockTo(currentBlock.add(totalBlocks));
 			// await updateAllocated funds
-			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId, 'Vault');
 
 			const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
 			const finalReleaseRatePerPeriodAfter = await this.Vault.finalReleaseRatePerPeriod();
@@ -1583,7 +1599,7 @@ contract('Vault', (accounts) => {
 			await time.advanceBlockTo(currentBlock.add(totalBlocks));
 
 			// update accumulated funds
-			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('1'), receiver1, this.pk, this.chainId, 'Vault');
 
 			const currentReleaseRatePerPeriodAfter = await this.Vault.currentReleaseRatePerPeriod();
 			const finalReleaseRatePerPeriodAfter = await this.Vault.finalReleaseRatePerPeriod();
@@ -1606,7 +1622,8 @@ contract('Vault', (accounts) => {
 				receiver1,
 				8,
 				this.Vault.address,
-				new BN('111')
+				new BN('111'),
+				'Vault'
 			);
 
 			await expectRevert(
@@ -1753,7 +1770,7 @@ contract('Vault', (accounts) => {
 			await this.Vault.unPause();
 
 			//update allocated funds
-			await claim(this.Vault, user1, ether('1'), 1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('1'), 1, this.pk, this.chainId, 'Vault');
 
 			const currentPerBlockAmount = await this.Vault.currentReleaseRatePerBlock();
 
