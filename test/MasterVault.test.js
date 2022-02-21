@@ -525,7 +525,15 @@ contract.only('MasterVault', (accounts) => {
 				await this.Vault.deactivateLogicContract(currentLogicId, {from: owner});
 
 				await expectRevert(
-					claim(this.tempLogicContract, user1, ether('1'), receiver1, this.pk, this.chainId),
+					claim(
+						this.tempLogicContract,
+						user1,
+						ether('1'),
+						receiver1,
+						this.pk,
+						this.chainId,
+						'TokenReleaseScheduleLogic'
+					),
 					'MasterVault: INACTIVE_LOGIC_CONTRACT'
 				);
 			});
@@ -535,14 +543,33 @@ contract.only('MasterVault', (accounts) => {
 				await this.Vault.reactivateLogicContract(currentLogicId, {from: owner});
 
 				await expectRevert(
-					claim(this.tempLogicContract, user1, ether('1'), receiver1, this.pk, this.chainId),
+					claim(
+						this.tempLogicContract,
+						user1,
+						ether('1'),
+						receiver1,
+						this.pk,
+						this.chainId,
+						'TokenReleaseScheduleLogic'
+					),
 					'MasterVault: CLAIM_DURING_DORMANT_STATE'
 				);
 			});
 
 			it('should revert when logic contract tries to claim for unsupported tokens', async () => {
+				const currentBlock = await this.BlockData.getBlock();
+				await time.increase(new BN(time.duration.minutes('11')));
+
 				await expectRevert(
-					claim(this.tempLogicContract, user1, ether('1'), receiver1, this.pk, this.chainId),
+					claim(
+						this.tempLogicContract,
+						user1,
+						ether('1'),
+						receiver1,
+						this.pk,
+						this.chainId,
+						'TokenReleaseScheduleLogic'
+					),
 					'MasterVault: CLAIM_FOR_UNSUPPORTED_TOKEN'
 				);
 			});
@@ -555,7 +582,15 @@ contract.only('MasterVault', (accounts) => {
 				await this.Vault.addSupportedToken(this.LacToken.address, {from: owner});
 
 				await expectRevert(
-					claim(this.tempLogicContract, user1, ether('1'), receiver1, this.pk, this.chainId),
+					claim(
+						this.tempLogicContract,
+						user1,
+						ether('1'),
+						receiver1,
+						this.pk,
+						this.chainId,
+						'TokenReleaseScheduleLogic'
+					),
 					'MasterVault: INSUFFCIENT_TOKENS'
 				);
 			});
@@ -565,19 +600,35 @@ contract.only('MasterVault', (accounts) => {
 				await this.Vault.pause({from: owner});
 
 				await expectRevert(
-					claim(this.tempLogicContract, user1, ether('1'), receiver1, this.pk, this.chainId),
+					claim(
+						this.tempLogicContract,
+						user1,
+						ether('1'),
+						receiver1,
+						this.pk,
+						this.chainId,
+						'TokenReleaseScheduleLogic'
+					),
 					'Pausable: paused'
 				);
 
 				// unpause contract
-				await this.Vault.unpause({from: owner});
+				await this.Vault.unPause({from: owner});
 			});
 
 			it('should claim tokens correctly', async () => {
 				await this.LacToken.transfer(this.Vault.address, ether('100000'), {from: minter});
 
 				const user1BalBefore = await this.LacToken.balanceOf(user1);
-				await claim(this.tempLogicContract, user1, ether('1'), receiver1, this.pk, this.chainId);
+				await claim(
+					this.tempLogicContract,
+					user1,
+					ether('1'),
+					receiver1,
+					this.pk,
+					this.chainId,
+					'TokenReleaseScheduleLogic'
+				);
 				const user1BalAfter = await this.LacToken.balanceOf(user1);
 
 				expect(user1BalAfter).to.bignumber.be.eq(user1BalBefore.add(ether('1')));
@@ -693,8 +744,7 @@ contract.only('MasterVault', (accounts) => {
 				);
 			});
 
-			it('should revert when admin tries to claim  given no. of the tokens for LAC token address', async () => {
-				await this.Vault.removeSupportedToken(this.LacToken.address);
+			it('should revert when admin tries to claim  given no. of the tokens for supported token address', async () => {
 				await expectRevert(
 					this.Vault.claimTokens(owner, this.LacToken.address, ether('4'), {
 						from: owner
@@ -705,13 +755,7 @@ contract.only('MasterVault', (accounts) => {
 
 			it('should revert when admin tries to claim invalid amount of tokens', async () => {
 				await expectRevert(
-					this.Vault.claimTokens(owner, this.SampleToken.address, ether('0'), {
-						from: owner
-					}),
-					'MasterVault: INSUFFICIENT_BALANCE'
-				);
-				await expectRevert(
-					this.Vault.claimTokens(owner, this.SampleToken.address, ether('2'), {
+					this.Vault.claimTokens(owner, this.SampleToken.address, ether('5000000000000'), {
 						from: owner
 					}),
 					'MasterVault: INSUFFICIENT_BALANCE'
@@ -721,8 +765,6 @@ contract.only('MasterVault', (accounts) => {
 
 		describe('isOneOfLogicContract()', () => {
 			it('should tell whether given contract is logic contract or not correctly', async () => {
-				await this.Vault.addSupportedToken(this.LacToken.address);
-
 				let isLogicContract = await this.Vault.isOneOfLogicContract(user1);
 				expect(isLogicContract).to.be.eq(false);
 
@@ -1811,7 +1853,8 @@ contract.only('MasterVault', (accounts) => {
 				receiver1,
 				5,
 				this.TokenReleaseScheduleLogic.address,
-				this.chainId
+				this.chainId,
+				'TokenReleaseScheduleLogic'
 			);
 
 			const user1Bal = await this.LacToken.balanceOf(user1);
@@ -1856,7 +1899,8 @@ contract.only('MasterVault', (accounts) => {
 				receiver1,
 				6,
 				this.TokenReleaseScheduleLogic.address,
-				this.chainId
+				this.chainId,
+				'TokenReleaseScheduleLogic'
 			);
 
 			//claim tokens
@@ -1877,7 +1921,8 @@ contract.only('MasterVault', (accounts) => {
 				receiver1,
 				7,
 				this.TokenReleaseScheduleLogic.address,
-				this.chainId
+				this.chainId,
+				'TokenReleaseScheduleLogic'
 			);
 
 			//claim tokens
@@ -1898,7 +1943,8 @@ contract.only('MasterVault', (accounts) => {
 				8,
 				8,
 				this.TokenReleaseScheduleLogic.address,
-				this.chainId
+				this.chainId,
+				'TokenReleaseScheduleLogic'
 			);
 
 			//claim tokens
@@ -1919,7 +1965,8 @@ contract.only('MasterVault', (accounts) => {
 				receiver1,
 				9,
 				this.TokenReleaseScheduleLogic.address,
-				this.chainId
+				this.chainId,
+				'TokenReleaseScheduleLogic'
 			);
 
 			//claim tokens
@@ -1938,7 +1985,8 @@ contract.only('MasterVault', (accounts) => {
 				receiver1,
 				5,
 				this.TokenReleaseScheduleLogic.address,
-				this.chainId
+				this.chainId,
+				'TokenReleaseScheduleLogic'
 			);
 
 			//claim tokens
@@ -1957,7 +2005,8 @@ contract.only('MasterVault', (accounts) => {
 				receiver2,
 				6,
 				this.TokenReleaseScheduleLogic.address,
-				this.chainId
+				this.chainId,
+				'TokenReleaseScheduleLogic'
 			);
 
 			//claim tokens
@@ -1976,7 +2025,8 @@ contract.only('MasterVault', (accounts) => {
 				receiver1,
 				7,
 				this.BlockData.address,
-				this.chainId
+				this.chainId,
+				'TokenReleaseScheduleLogic'
 			);
 
 			//claim tokens
@@ -1995,7 +2045,8 @@ contract.only('MasterVault', (accounts) => {
 				receiver1,
 				8,
 				this.TokenReleaseScheduleLogic.address,
-				new BN('111')
+				new BN('111'),
+				'TokenReleaseScheduleLogic'
 			);
 
 			//claim tokens
@@ -2014,7 +2065,8 @@ contract.only('MasterVault', (accounts) => {
 				receiver1,
 				8,
 				this.TokenReleaseScheduleLogic.address,
-				new BN('111')
+				new BN('111'),
+				'TokenReleaseScheduleLogic'
 			);
 
 			//claim tokens
@@ -2035,7 +2087,8 @@ contract.only('MasterVault', (accounts) => {
 				receiver1,
 				8,
 				this.TokenReleaseScheduleLogic.address,
-				this.chainId
+				this.chainId,
+				'TokenReleaseScheduleLogic'
 			);
 
 			//claim tokens
@@ -2056,7 +2109,8 @@ contract.only('MasterVault', (accounts) => {
 				receiver1,
 				9,
 				this.TokenReleaseScheduleLogic.address,
-				this.chainId
+				this.chainId,
+				'TokenReleaseScheduleLogic'
 			);
 
 			//claim tokens
@@ -2078,7 +2132,8 @@ contract.only('MasterVault', (accounts) => {
 				receiver1,
 				3,
 				this.TokenReleaseScheduleLogic.address,
-				this.chainId
+				this.chainId,
+				'TokenReleaseScheduleLogic'
 			);
 
 			//claim tokens
@@ -2097,7 +2152,8 @@ contract.only('MasterVault', (accounts) => {
 				ether('1'),
 				receiver1,
 				this.pk,
-				this.chainId
+				this.chainId,
+				'TokenReleaseScheduleLogic'
 			);
 
 			const lastFundUpdatedBlock = await this.TokenReleaseScheduleLogic.lastFundUpdatedBlock();
@@ -2131,7 +2187,8 @@ contract.only('MasterVault', (accounts) => {
 				ether('1'),
 				receiver1,
 				this.pk,
-				this.chainId
+				this.chainId,
+				'TokenReleaseScheduleLogic'
 			);
 
 			const lastFundUpdatedBlockAfter = await this.TokenReleaseScheduleLogic.lastFundUpdatedBlock();
@@ -2266,7 +2323,8 @@ contract.only('MasterVault', (accounts) => {
 				ether('1'),
 				receiver1,
 				this.pk,
-				this.chainId
+				this.chainId,
+				'TokenReleaseScheduleLogic'
 			);
 
 			// 1270 - 69 / 1200
@@ -2341,7 +2399,8 @@ contract.only('MasterVault', (accounts) => {
 				ether('1'),
 				receiver1,
 				this.pk,
-				this.chainId
+				this.chainId,
+				'TokenReleaseScheduleLogic'
 			);
 
 			const currentReleaseRatePerPeriodAfter =
@@ -2386,7 +2445,8 @@ contract.only('MasterVault', (accounts) => {
 				ether('1'),
 				receiver1,
 				this.pk,
-				this.chainId
+				this.chainId,
+				'TokenReleaseScheduleLogic'
 			);
 
 			const currentReleaseRatePerPeriodAfter =
@@ -2413,7 +2473,8 @@ contract.only('MasterVault', (accounts) => {
 				receiver1,
 				8,
 				this.TokenReleaseScheduleLogic.address,
-				new BN('111')
+				new BN('111'),
+				'TokenReleaseScheduleLogic'
 			);
 
 			await expectRevert(
@@ -2596,7 +2657,15 @@ contract.only('MasterVault', (accounts) => {
 			await this.TokenReleaseScheduleLogic.unPause();
 
 			//update allocated funds
-			await claim(this.TokenReleaseScheduleLogic, user1, ether('1'), 1, this.pk, this.chainId);
+			await claim(
+				this.TokenReleaseScheduleLogic,
+				user1,
+				ether('1'),
+				1,
+				this.pk,
+				this.chainId,
+				'TokenReleaseScheduleLogic'
+			);
 
 			const currentPerBlockAmount =
 				await this.TokenReleaseScheduleLogic.currentReleaseRatePerBlock();
