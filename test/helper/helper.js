@@ -1,12 +1,10 @@
 const {signTypedData_v4} = require('eth-sig-util');
 
-const name = 'Vault';
 const version = '1.0.0';
 
-async function claim(Vault, user, amount, receiver, pk, chainId) {
+async function claim(Vault, user, amount, receiver, pk, chainId, contractName) {
 	// should be able to claim with latest nonce
 	const currentNonce = await Vault.userNonce(user);
-
 	const signature = await createSignature(
 		pk,
 		user,
@@ -15,7 +13,8 @@ async function claim(Vault, user, amount, receiver, pk, chainId) {
 		receiver,
 		3,
 		Vault.address,
-		chainId
+		chainId,
+		contractName
 	);
 
 	//claim tokens
@@ -31,7 +30,8 @@ async function createSignature(
 	receiverAddress,
 	referenceNumberValue,
 	contractAddress,
-	chainId
+	chainId,
+	name
 ) {
 	const typedMessage = {
 		data: {

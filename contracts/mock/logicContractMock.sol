@@ -1,26 +1,33 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import '@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PausableUpgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/utils/cryptography/draft-EIP712Upgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/utils/cryptography/ECDSAUpgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol';
-import '@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol';
+import '@openzeppelin/contracts/access/AccessControl.sol';
+import '@openzeppelin/contracts/security/ReentrancyGuard.sol';
+import '@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol';
+import '@openzeppelin/contracts/utils/cryptography/draft-EIP712.sol';
+import '@openzeppelin/contracts/utils/cryptography/ECDSA.sol';
+import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import '@openzeppelin/contracts/utils/Counters.sol';
+import '@openzeppelin/contracts/security/Pausable.sol';
 
-import './library/LacTokenUtils.sol';
-import './interfaces/IVersionedContract.sol';
+import '../library/LacTokenUtils.sol';
+import '../interfaces/IVaultLogic.sol';
+import '../interfaces/IVersionedContract.sol';
+import '../interfaces/IMasterVaultBase.sol';
 
-contract Vault is
-	EIP712Upgradeable,
-	AccessControlUpgradeable,
-	ReentrancyGuardUpgradeable,
-	PausableUpgradeable,
+interface ILogic is IVaultLogic {
+	function getBlock() external view returns (uint256);
+}
+
+contract LogicContractMock is
+	EIP712('LogicContractMock', LogicContractMock.getVersionNumber()),
+	AccessControl,
+	ReentrancyGuard,
+	Pausable,
+	ILogic,
 	IVersionedContract
 {
-	using CountersUpgradeable for CountersUpgradeable.Counter;
+	using Counters for Counters.Counter;
 
 	/*
    =======================================================================
@@ -47,7 +54,7 @@ contract Vault is
    =======================================================================
  */
 
-	CountersUpgradeable.Counter internal receiverCounter;
+	Counters.Counter internal receiverCounter;
 
 	/*
    =======================================================================
@@ -55,7 +62,8 @@ contract Vault is
    =======================================================================
  */
 
-	IERC20Upgradeable public LacToken;
+	IERC20 public Token;
+	IMasterVaultBase public Vault;
 
 	uint256 public totalShares;
 	uint256 public initialStartBlock;
@@ -83,34 +91,29 @@ contract Vault is
  	*/
 
 	/**
-	 * @notice Used in place of the constructor to allow the contract to be upgradable via proxy.
+	 * @notice
 	 */
-	function initialize(
-		string memory _name,
-		address _lacAddress,
+	constructor(
+		address _vaultAddress,
+		address tokenAddress,
 		uint256 _initialReleaseRatePerPeriod,
 		uint256 _finalReleaseRatePerPeriod,
 		int256 _changePercentage,
 		uint256 _blocksPerPeriod
 	)
-		external
-		virtual
-		initializer
 		onlyValidReleaseRates(
 			_initialReleaseRatePerPeriod,
 			_finalReleaseRatePerPeriod,
 			_changePercentage
 		)
 	{
-		require(_lacAddress != address(0), 'Vault: INVALID_LAC_ADDRESS');
+		require(_vaultAddress != address(0), 'TokenReleaseScheduleLogic: INVALID_VAULT_ADDRESS');
+		require(tokenAddress != address(0), 'TokenReleaseScheduleLogic: INVALID_LAC_ADDRESS');
 
-		__AccessControl_init();
-		__ReentrancyGuard_init();
-		__EIP712_init(_name, getVersionNumber());
-		__Pausable_init();
 		_setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
 
-		LacToken = IERC20Upgradeable(_lacAddress);
+		Vault = IMasterVaultBase(_vaultAddress);
+		Token = IERC20(tokenAddress);
 		shareMultiplier = 1e12;
 		currentReleaseRatePerPeriod = _initialReleaseRatePerPeriod;
 
@@ -127,14 +130,6 @@ contract Vault is
    ======================== Events ====================================
    =======================================================================
  	*/
-	event Claimed(
-		address account,
-		uint256 receiverId,
-		uint256 amount,
-		uint256 timestamp,
-		uint256 referenceId
-	);
-
 	event ReceiverAdded(uint256 indexed receiverId, uint256 indexed share);
 	event ReceiverRemoved(uint256 indexed receiverId);
 	event ReceiverShareUpdated(
@@ -150,7 +145,7 @@ contract Vault is
 		uint256 newShare
 	);
 	event ClaimTokens(address indexed user, address indexed tokenAddress, uint256 indexed amount);
-	event VaultParamsUpdated(
+	event TokenReleaseScheduleLogicParamsUpdated(
 		uint256 indexed currentReleaseRatePerPeriod,
 		uint256 indexed finalReleaseRatePerPeriod,
 		int256 indexed changePercentage,
@@ -165,7 +160,10 @@ contract Vault is
  	*/
 
 	modifier onlyAdmin() {
-		require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()), 'Vault: ONLY_ADMIN_CAN_CALL');
+		require(
+			hasRole(DEFAULT_ADMIN_ROLE, _msgSender()),
+			'TokenReleaseScheduleLogic: ONLY_ADMIN_CAN_CALL'
+		);
 		_;
 	}
 
@@ -175,13 +173,22 @@ contract Vault is
 		int256 _changePercentage
 	) {
 		if (_changePercentage > 0) {
-			require(_changePercentage >= 100, 'Vault: INVALID_PERCENTAGE');
-			require(_finalReleaseRatePerPeriod > _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
+			require(_changePercentage >= 100, 'TokenReleaseScheduleLogic: INVALID_PERCENTAGE');
+			require(
+				_finalReleaseRatePerPeriod > _initialReleaseRatePerPeriod,
+				'TokenReleaseScheduleLogic: INVALID_RATES'
+			);
 		} else if (_changePercentage < 0) {
-			require(_changePercentage <= -100, 'Vault: INVALID_PERCENTAGE');
-			require(_finalReleaseRatePerPeriod < _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
+			require(_changePercentage <= -100, 'TokenReleaseScheduleLogic: INVALID_PERCENTAGE');
+			require(
+				_finalReleaseRatePerPeriod < _initialReleaseRatePerPeriod,
+				'TokenReleaseScheduleLogic: INVALID_RATES'
+			);
 		} else {
-			require(_finalReleaseRatePerPeriod == _initialReleaseRatePerPeriod, 'Vault: INVALID_RATES');
+			require(
+				_finalReleaseRatePerPeriod == _initialReleaseRatePerPeriod,
+				'TokenReleaseScheduleLogic: INVALID_RATES'
+			);
 		}
 		_;
 	}
@@ -191,6 +198,7 @@ contract Vault is
    ======================== Public Methods ===============================
    =======================================================================
  	*/
+
 	/**
 	 * @notice This method allows admin to setup the startblock and	 lastfund updated block and adds the initial receivers
 	 * @param _fundReceivers - indicates the list of receivers
@@ -201,10 +209,10 @@ contract Vault is
 		virtual
 		onlyAdmin
 	{
-		require(!isSetup, 'Vault: ALREADY_SETUP_DONE');
+		require(!isSetup, 'TokenReleaseScheduleLogic: ALREADY_SETUP_DONE');
 		require(
 			_fundReceivers.length > 0 && _fundReceivers.length == _shares.length,
-			'Vault: INVALID_DATA'
+			'TokenReleaseScheduleLogic: INVALID_DATA'
 		);
 
 		for (uint256 i = 0; i < _fundReceivers.length; i++) {
@@ -231,21 +239,25 @@ contract Vault is
 		bytes calldata _signature
 	) external virtual nonReentrant whenNotPaused {
 		(bool isExists, ) = LacTokenUtils.isNumberExists(fundReceiversList, _receiverId);
-		require(isExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
+		require(isExists, 'TokenReleaseScheduleLogic: RECEIVER_DOES_NOT_EXISTS');
 
 		// update allocated funds
 		_updateAllocatedFunds();
 
 		require(
 			_amount > 0 && _amount <= fundReceivers[_receiverId].totalAccumulatedFunds,
-			'Vault: INSUFFICIENT_AMOUNT'
+			'TokenReleaseScheduleLogic: INSUFFICIENT_AMOUNT'
 		);
 		require(
 			_verify(_hash(_amount, _receiverId, userNonce[msg.sender], _referenceNumber), _signature),
-			'Vault: INVALID_SIGNATURE'
+			'TokenReleaseScheduleLogic: INVALID_SIGNATURE'
 		);
 
-		require(LacToken.transfer(msg.sender, _amount), 'Vault: TRANSFER_FAILED');
+		// claim tokens from Vault
+		require(
+			Vault.claim(msg.sender, address(Token), _amount),
+			'TokenReleaseScheduleLogic: TRANSFER_FAILED'
+		);
 
 		fundReceivers[_receiverId].totalAccumulatedFunds -= _amount;
 
@@ -268,7 +280,7 @@ contract Vault is
 	{
 		require(
 			_fundReceivers.length > 0 && _fundReceivers.length == _shares.length,
-			'Vault: INVALID_DATA'
+			'TokenReleaseScheduleLogic: INVALID_DATA'
 		);
 
 		_updateAllocatedFunds();
@@ -310,10 +322,10 @@ contract Vault is
 
 		(bool isExists, ) = LacTokenUtils.isNumberExists(fundReceiversList, _receiverId);
 
-		require(isExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
+		require(isExists, 'TokenReleaseScheduleLogic: RECEIVER_DOES_NOT_EXISTS');
 		uint256 currentShare = fundReceivers[_receiverId].lacShare;
 
-		require(currentShare != _newShare && _newShare > 0, 'Vault: INVALID_SHARE');
+		require(currentShare != _newShare && _newShare > 0, 'TokenReleaseScheduleLogic: INVALID_SHARE');
 
 		totalShares = (totalShares - fundReceivers[_receiverId].lacShare) + _newShare;
 		fundReceivers[_receiverId].lacShare = _newShare;
@@ -332,7 +344,7 @@ contract Vault is
 		string memory _newReceiverName,
 		uint256 _newShare
 	) external virtual onlyAdmin whenPaused returns (uint256 receiverId) {
-		require(bytes(_newReceiverName).length > 0, 'Vault: INVALID_NAME');
+		require(bytes(_newReceiverName).length > 0, 'TokenReleaseScheduleLogic: INVALID_NAME');
 
 		_updateAllocatedFunds();
 
@@ -340,10 +352,10 @@ contract Vault is
 			fundReceiversList,
 			_existingReceiverId
 		);
-		require(isReceiverExists, 'Vault: RECEIVER_DOES_NOT_EXISTS');
+		require(isReceiverExists, 'TokenReleaseScheduleLogic: RECEIVER_DOES_NOT_EXISTS');
 
 		uint256 currentShare = fundReceivers[_existingReceiverId].lacShare;
-		require(_newShare < currentShare && _newShare > 0, 'Vault: INVALID_SHARE');
+		require(_newShare < currentShare && _newShare > 0, 'TokenReleaseScheduleLogic: INVALID_SHARE');
 
 		receiverCounter.increment();
 		receiverId = receiverCounter.current();
@@ -355,7 +367,7 @@ contract Vault is
 		emit ReceiverShrinked(_existingReceiverId, receiverId, currentShare, _newShare);
 	}
 
-	function updateVaultParams(
+	function updateTokenReleaseScheduleLogicParams(
 		uint256 _newInitialReleaseRate,
 		uint256 _newfinalReleaseRate,
 		int256 _newPercentage,
@@ -373,7 +385,7 @@ contract Vault is
 				_newfinalReleaseRate != finalReleaseRatePerPeriod ||
 				_newPercentage != changePercentage ||
 				_newBlocksPerPeriod != blocksPerPeriod,
-			'Vault: ALREADY_SET'
+			'TokenReleaseScheduleLogic: ALREADY_SET'
 		);
 
 		_updateAllocatedFunds();
@@ -387,7 +399,7 @@ contract Vault is
 		changePercentage = _newPercentage;
 		blocksPerPeriod = _newBlocksPerPeriod;
 
-		emit VaultParamsUpdated(
+		emit TokenReleaseScheduleLogicParamsUpdated(
 			currentReleaseRatePerPeriod,
 			finalReleaseRatePerPeriod,
 			changePercentage,
@@ -400,15 +412,15 @@ contract Vault is
 	 * @notice This method allows admin to claim all the tokens of specified address to given address
 	 */
 	function claimAllTokens(address _user, address _tokenAddress) external virtual onlyAdmin {
-		require(_user != address(0), 'Vault: INVALID_USER_ADDRESS');
+		require(_user != address(0), 'TokenReleaseScheduleLogic: INVALID_USER_ADDRESS');
 		require(
-			_tokenAddress != address(0) && _tokenAddress != address(LacToken),
-			'Vault: INVALID_TOKEN_ADDRESS'
+			_tokenAddress != address(0) && _tokenAddress != address(Token),
+			'TokenReleaseScheduleLogic: INVALID_TOKEN_ADDRESS'
 		);
 
-		uint256 tokenAmount = IERC20Upgradeable(_tokenAddress).balanceOf(address(this));
+		uint256 tokenAmount = IERC20(_tokenAddress).balanceOf(address(this));
 
-		require(IERC20Upgradeable(_tokenAddress).transfer(_user, tokenAmount));
+		require(IERC20(_tokenAddress).transfer(_user, tokenAmount));
 
 		emit ClaimTokens(_user, _tokenAddress, tokenAmount);
 	}
@@ -421,16 +433,19 @@ contract Vault is
 		address _tokenAddress,
 		uint256 _amount
 	) external virtual onlyAdmin {
-		require(_user != address(0), 'Vault: INVALID_USER_ADDRESS');
+		require(_user != address(0), 'TokenReleaseScheduleLogic: INVALID_USER_ADDRESS');
 		require(
-			_tokenAddress != address(0) && _tokenAddress != address(LacToken),
-			'Vault: INVALID_TOKEN_ADDRESS'
+			_tokenAddress != address(0) && _tokenAddress != address(Token),
+			'TokenReleaseScheduleLogic: INVALID_TOKEN_ADDRESS'
 		);
 
-		uint256 tokenAmount = IERC20Upgradeable(_tokenAddress).balanceOf(address(this));
-		require(_amount > 0 && tokenAmount >= _amount, 'Vault: INSUFFICIENT_BALANCE');
+		uint256 tokenAmount = IERC20(_tokenAddress).balanceOf(address(this));
+		require(
+			_amount > 0 && tokenAmount >= _amount,
+			'TokenReleaseScheduleLogic: INSUFFICIENT_BALANCE'
+		);
 
-		require(IERC20Upgradeable(_tokenAddress).transfer(_user, _amount));
+		require(IERC20(_tokenAddress).transfer(_user, _amount));
 
 		emit ClaimTokens(_user, _tokenAddress, _amount);
 	}
@@ -454,8 +469,22 @@ contract Vault is
    ======================== Getter Methods ===============================
    =======================================================================
  	*/
+	function getBlock() external view virtual override returns (uint256) {
+		return block.number;
+	}
+
+	function supportsInterface(bytes4 interfaceId)
+		public
+		view
+		virtual
+		override(IERC165, AccessControl)
+		returns (bool)
+	{
+		return interfaceId == type(ILogic).interfaceId || interfaceId == type(IERC165).interfaceId;
+	}
+
 	/**
-	 * This method returns the total number of fundReceivers available in vault
+	 * This method returns the total number of fundReceivers available in logicContract
 	 */
 	function getTotalFundReceivers() external view virtual returns (uint256) {
 		return fundReceiversList.length;
@@ -605,7 +634,7 @@ contract Vault is
 		internal
 		returns (uint256 receiverId)
 	{
-		require(bytes(_receiverName).length > 0, 'Vault: INVALID_NAME');
+		require(bytes(_receiverName).length > 0, 'TokenReleaseScheduleLogic: INVALID_NAME');
 
 		receiverCounter.increment();
 		receiverId = receiverCounter.current();
@@ -726,6 +755,6 @@ contract Vault is
 	}
 
 	function _verify(bytes32 _digest, bytes memory _signature) internal view returns (bool) {
-		return hasRole(VAULT_KEEPER, ECDSAUpgradeable.recover(_digest, _signature));
+		return hasRole(VAULT_KEEPER, ECDSA.recover(_digest, _signature));
 	}
 }
