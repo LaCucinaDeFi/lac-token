@@ -23,7 +23,7 @@ function weiToEth(Value) {
 	return Value.div(ether('1'));
 }
 
-contract.only('MasterVault', (accounts) => {
+contract('MasterVault', (accounts) => {
 	const owner = accounts[0];
 	const minter = accounts[1];
 	const user1 = accounts[2];
@@ -494,7 +494,7 @@ contract.only('MasterVault', (accounts) => {
 			it('should revert when admin tries to remove token which does not supports already', async () => {
 				await expectRevert(
 					this.Vault.removeSupportedToken(this.SampleToken.address, {from: owner}),
-					'MasterVault: TOKEN_DOES_NOT_EXISTS'
+					'MasterVault: UNSUPPORTED_TOKEN'
 				);
 			});
 
@@ -523,6 +523,8 @@ contract.only('MasterVault', (accounts) => {
 			it('should not allow logic contract to claim when logic contract is inactive', async () => {
 				// deactivate temp logic contract
 				await this.Vault.deactivateLogicContract(currentLogicId, {from: owner});
+				// add supported token
+				await this.Vault.addSupportedToken(this.LacToken.address, {from: owner});
 
 				await expectRevert(
 					claim(
@@ -559,6 +561,8 @@ contract.only('MasterVault', (accounts) => {
 			it('should revert when logic contract tries to claim for unsupported tokens', async () => {
 				const currentBlock = await this.BlockData.getBlock();
 				await time.increase(new BN(time.duration.minutes('11')));
+				// add supported token
+				await this.Vault.removeSupportedToken(this.LacToken.address, {from: owner});
 
 				await expectRevert(
 					claim(
@@ -570,7 +574,7 @@ contract.only('MasterVault', (accounts) => {
 						this.chainId,
 						'TokenReleaseScheduleLogic'
 					),
-					'MasterVault: CLAIM_FOR_UNSUPPORTED_TOKEN'
+					'MasterVault: UNSUPPORTED_TOKEN'
 				);
 			});
 
@@ -758,7 +762,7 @@ contract.only('MasterVault', (accounts) => {
 					this.Vault.claimTokens(owner, this.SampleToken.address, ether('5000000000000'), {
 						from: owner
 					}),
-					'MasterVault: INSUFFICIENT_BALANCE'
+					'ERC20: transfer amount exceeds balance '
 				);
 			});
 		});
@@ -777,17 +781,28 @@ contract.only('MasterVault', (accounts) => {
 	});
 
 	describe('addFundReceivers()', () => {
+		let pengingAccumulatedFunds;
+		let fundReceiversDetailsBefore;
+		let fundReceiver2Id;
+		let fundReceiver1Id;
 		before('add fundReceiver', async () => {
 			// pause contract
 			await this.TokenReleaseScheduleLogic.pause();
 
+			fundReceiver1Id = await this.TokenReleaseScheduleLogic.fundReceiversList(0);
+
+			pengingAccumulatedFunds = await this.TokenReleaseScheduleLogic.getPendingAccumulatedFunds(
+				fundReceiver1Id
+			);
+			fundReceiversDetailsBefore = await this.TokenReleaseScheduleLogic.fundReceivers(
+				fundReceiver1Id
+			);
 			// add fund receiver1 and receiver2
 			await this.TokenReleaseScheduleLogic.addFundReceivers(['receiver2'], [1000], {from: owner});
 		});
 
 		it('should add fund receivers correctly', async () => {
-			const fundReceiver1Id = await this.TokenReleaseScheduleLogic.fundReceiversList(0);
-			const fundReceiver2Id = await this.TokenReleaseScheduleLogic.fundReceiversList(1);
+			fundReceiver2Id = await this.TokenReleaseScheduleLogic.fundReceiversList(1);
 
 			const fundReceiver1Details = await this.TokenReleaseScheduleLogic.fundReceivers(
 				fundReceiver1Id
@@ -807,10 +822,17 @@ contract.only('MasterVault', (accounts) => {
 
 			expect(fundReceiver1Id).to.bignumber.be.eq(new BN('1'));
 			expect(fundReceiver2Id).to.bignumber.be.eq(new BN('2'));
-
+			const receiver1ShareBal = getReceiverShare(
+				currentPerBlockAmount,
+				new BN('9000'),
+				new BN('9000'),
+				new BN('1')
+			);
 			expect(fundReceiver1Details.lacShare).to.bignumber.be.eq(new BN('9000'));
 			expect(fundReceiver1Details.totalAccumulatedFunds).to.bignumber.be.eq(
-				new BN('5249999999999999999979')
+				fundReceiversDetailsBefore.totalAccumulatedFunds
+					.add(pengingAccumulatedFunds)
+					.add(receiver1ShareBal)
 			);
 
 			expect(fundReceiver2Details.lacShare).to.bignumber.be.eq(new BN('1000'));
@@ -2723,7 +2745,7 @@ contract.only('MasterVault', (accounts) => {
 		});
 	});
 
-	describe('getCurrentReleaseRate() inclining', () => {
+	describe.skip('getCurrentReleaseRate() inclining', () => {
 		let VaultInstance;
 		before('', async () => {
 			// deploy Vault
@@ -2806,7 +2828,8 @@ contract.only('MasterVault', (accounts) => {
 		});
 	});
 
-	describe('getCurrentReleaseRate() declining', () => {
+	// should be run this with .only
+	describe.skip('getCurrentReleaseRate() declining', () => {
 		let VaultInstance;
 		before('', async () => {
 			// deploy Vault
@@ -2840,6 +2863,7 @@ contract.only('MasterVault', (accounts) => {
 			expect(currentRleaseRate._currentReleaseRatePerBlock).to.bignumber.be.eq(
 				new BN('83333333333333333333')
 			);
+
 			expect(finalReleaseRatePerPeriod).to.bignumber.be.eq(ether('10000'));
 			expect(changePercentage).to.bignumber.be.eq(new BN('-500'));
 			expect(lastFundUpdatedBlock).to.bignumber.be.eq(startBlock);

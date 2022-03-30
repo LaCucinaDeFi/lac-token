@@ -24,11 +24,11 @@ contract TokenReleaseScheduleLogic is
 	IVersionedContract
 {
 	using Counters for Counters.Counter;
-
+	using LacTokenUtils for uint256[];
 	/*
    =======================================================================
    ======================== Structures ===================================
-   =======================================================================
+   ======================================================================
  */
 
 	struct FundReceiver {
@@ -234,7 +234,7 @@ contract TokenReleaseScheduleLogic is
 		uint256 _referenceNumber,
 		bytes calldata _signature
 	) external virtual nonReentrant whenNotPaused {
-		(bool isExists, ) = LacTokenUtils.isNumberExists(fundReceiversList, _receiverId);
+		(bool isExists, ) = fundReceiversList.isNumberExists(_receiverId);
 		require(isExists, 'TokenReleaseScheduleLogic: RECEIVER_DOES_NOT_EXISTS');
 
 		// update allocated funds
@@ -293,7 +293,7 @@ contract TokenReleaseScheduleLogic is
 	function removeFundReceiver(uint256 _receiverId) external virtual onlyAdmin whenPaused {
 		_updateAllocatedFunds();
 
-		LacTokenUtils.removeNumberFromList(fundReceiversList, _receiverId);
+		fundReceiversList.removeNumberFromList(_receiverId);
 
 		// update total shares
 		totalShares -= fundReceivers[_receiverId].lacShare;
@@ -316,7 +316,7 @@ contract TokenReleaseScheduleLogic is
 	{
 		_updateAllocatedFunds();
 
-		(bool isExists, ) = LacTokenUtils.isNumberExists(fundReceiversList, _receiverId);
+		(bool isExists, ) = fundReceiversList.isNumberExists(_receiverId);
 
 		require(isExists, 'TokenReleaseScheduleLogic: RECEIVER_DOES_NOT_EXISTS');
 		uint256 currentShare = fundReceivers[_receiverId].lacShare;
@@ -344,10 +344,7 @@ contract TokenReleaseScheduleLogic is
 
 		_updateAllocatedFunds();
 
-		(bool isReceiverExists, ) = LacTokenUtils.isNumberExists(
-			fundReceiversList,
-			_existingReceiverId
-		);
+		(bool isReceiverExists, ) = fundReceiversList.isNumberExists(_existingReceiverId);
 		require(isReceiverExists, 'TokenReleaseScheduleLogic: RECEIVER_DOES_NOT_EXISTS');
 
 		uint256 currentShare = fundReceivers[_existingReceiverId].lacShare;
@@ -498,6 +495,7 @@ contract TokenReleaseScheduleLogic is
 		virtual
 		returns (uint256 accumulatedFunds)
 	{
+		uint256 receiverShare = getFundReceiverShare(_receiver);
 		if (_isPeriodCompleted()) {
 			uint256 totalBlocks;
 			uint256 currentPerPeriodRate;
@@ -511,7 +509,7 @@ contract TokenReleaseScheduleLogic is
 				: 0;
 
 			accumulatedFunds =
-				(currentReleaseRatePerBlock * totalBlocks * getFundReceiverShare(_receiver)) /
+				(currentReleaseRatePerBlock * totalBlocks * receiverShare) /
 				shareMultiplier;
 
 			// calculate number of periods before last update happened
@@ -525,9 +523,7 @@ contract TokenReleaseScheduleLogic is
 						int256(currentPerPeriodRate)
 					);
 
-					accumulatedFunds +=
-						(perBlockReleaseRate * blocksPerPeriod * getFundReceiverShare(_receiver)) /
-						shareMultiplier;
+					accumulatedFunds += (perPeriodReleaseRate * receiverShare) / shareMultiplier;
 
 					periodEndBlock = periodEndBlock + blocksPerPeriod;
 					currentPerPeriodRate = perPeriodReleaseRate;
@@ -542,13 +538,11 @@ contract TokenReleaseScheduleLogic is
 					int256(currentPerPeriodRate)
 				);
 
-				accumulatedFunds +=
-					(perBlockReleaseRate * totalBlocks * getFundReceiverShare(_receiver)) /
-					shareMultiplier;
+				accumulatedFunds += (perBlockReleaseRate * totalBlocks * receiverShare) / shareMultiplier;
 			}
 		} else {
 			accumulatedFunds =
-				(currentReleaseRatePerBlock * blocksPassedSinceUpdate() * getFundReceiverShare(_receiver)) /
+				(currentReleaseRatePerBlock * blocksPassedSinceUpdate() * receiverShare) /
 				shareMultiplier;
 		}
 	}
@@ -564,7 +558,7 @@ contract TokenReleaseScheduleLogic is
 	 * @notice This method returns the per block and per period release rate
 	 */
 	function getCurrentReleaseRate()
-		public
+		external
 		view
 		virtual
 		returns (
@@ -640,7 +634,7 @@ contract TokenReleaseScheduleLogic is
 	}
 
 	function _isPeriodCompleted() public view returns (bool isCompleted) {
-		if (block.number > (startBlock + blocksPerPeriod)) return true;
+		return block.number > (startBlock + blocksPerPeriod);
 	}
 
 	/**
