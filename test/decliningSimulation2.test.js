@@ -36,7 +36,6 @@ contract.skip('DecliningSimulation2', (accounts) => {
 			ether('90000000'), //90m initial
 			ether('1000'), // min
 			-3000, // -30%
-			blocksPerWeek,
 			blocksPerWeek
 		]);
 
@@ -116,7 +115,8 @@ contract.skip('DecliningSimulation2', (accounts) => {
 				receiver1,
 				5,
 				this.Vault.address,
-				this.chainId
+				this.chainId,
+				'Vault'
 			);
 
 			//claim tokens
@@ -176,10 +176,10 @@ contract.skip('DecliningSimulation2', (accounts) => {
 			await time.advanceBlockTo(blocksToIncrease);
 
 			// claim 60k tokens
-			await claim(this.Vault, user1, ether('16000000'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('16000000'), receiver1, this.pk, this.chainId, 'Vault');
 
 			// claim 5k tokens
-			await claim(this.Vault, user1, ether('4000000'), receiver3, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('4000000'), receiver3, this.pk, this.chainId, 'Vault');
 
 			const currentBlockAfter = await this.BlockData.getBlock();
 			console.log('currentBlockAfter: ', currentBlockAfter.toString());
@@ -241,10 +241,10 @@ contract.skip('DecliningSimulation2', (accounts) => {
 			await time.advanceBlockTo(blocksToIncrease);
 
 			// claim 28k tokens
-			await claim(this.Vault, user1, ether('10800000'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('10800000'), receiver1, this.pk, this.chainId, 'Vault');
 
 			// claim  4750k tokens
-			await claim(this.Vault, user1, ether('53500000'), receiver2, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('53500000'), receiver2, this.pk, this.chainId, 'Vault');
 
 			const currentBlockAfter = await this.BlockData.getBlock();
 			console.log('currentBlockAfter: ', currentBlockAfter.toString());
@@ -302,13 +302,13 @@ contract.skip('DecliningSimulation2', (accounts) => {
 			await time.advanceBlockTo(blocksToIncrease);
 
 			// claim  4750k tokens
-			await claim(this.Vault, user1, ether('32800000'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('32800000'), receiver1, this.pk, this.chainId, 'Vault');
 
 			// claim  4750k tokens
-			await claim(this.Vault, user1, ether('63500000'), receiver2, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('63500000'), receiver2, this.pk, this.chainId, 'Vault');
 
 			// claim  4750k tokens
-			await claim(this.Vault, user1, ether('63500000'), receiver3, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('63500000'), receiver3, this.pk, this.chainId, 'Vault');
 
 			const currentBlockAfter = await this.BlockData.getBlock();
 			console.log('currentBlockAfter: ', currentBlockAfter.toString());
