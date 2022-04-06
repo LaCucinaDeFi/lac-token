@@ -108,6 +108,14 @@ contract MasterVault is
 		_;
 	}
 
+	modifier onlyUnsupportedToken(address _tokenAddress) {
+		require(
+			_tokenAddress != address(0) && supportedTokens[_tokenAddress] == false,
+			'MasterVault: INVALID_TOKEN_ADDRESS'
+		);
+		_;
+	}
+
 	/*
    =======================================================================
    ======================== Public Methods ===============================
@@ -279,12 +287,13 @@ contract MasterVault is
 	 * @notice This method allows owner to claim all the tokens of specified token address to given address.
 	 * This method does not allows to claim the supported tokens. ex. LAC, PMA
 	 */
-	function claimAllTokens(address _user, address _tokenAddress) external virtual onlyOwner {
+	function claimAllTokens(address _user, address _tokenAddress)
+		external
+		virtual
+		onlyOwner
+		onlyUnsupportedToken(_tokenAddress)
+	{
 		require(_user != address(0), 'MasterVault: INVALID_USER_ADDRESS');
-		require(
-			_tokenAddress != address(0) && supportedTokens[_tokenAddress] == false,
-			'MasterVault: INVALID_TOKEN_ADDRESS'
-		);
 
 		uint256 tokenAmount = IERC20Upgradeable(_tokenAddress).balanceOf(address(this));
 
@@ -301,12 +310,8 @@ contract MasterVault is
 		address _user,
 		address _tokenAddress,
 		uint256 _amount
-	) external virtual onlyOwner {
+	) external virtual onlyOwner onlyUnsupportedToken(_tokenAddress) {
 		require(_user != address(0), 'MasterVault: INVALID_USER_ADDRESS');
-		require(
-			_tokenAddress != address(0) && !supportedTokens[_tokenAddress],
-			'MasterVault: INVALID_TOKEN_ADDRESS'
-		);
 
 		require(IERC20Upgradeable(_tokenAddress).transfer(_user, _amount));
 
