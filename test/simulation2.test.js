@@ -12,7 +12,7 @@ const Vault = artifacts.require('Vault');
 const BlockData = artifacts.require('BlockData');
 const SampleToken = artifacts.require('SampleToken');
 
-contract.only('Simulation1', (accounts) => {
+contract('Simulation1', (accounts) => {
 	const owner = accounts[0];
 	const minter = accounts[1];
 	const user1 = accounts[2];
@@ -106,7 +106,7 @@ contract.only('Simulation1', (accounts) => {
 			const user1BalanceBefore = await this.LacToken.balanceOf(user1);
 
 			// claim tokens
-			await claim(this.Vault, user1, ether('3000'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('3000'), receiver1, this.pk, this.chainId, 'Vault');
 
 			receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
 			receiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);
@@ -162,10 +162,10 @@ contract.only('Simulation1', (accounts) => {
 			const user1BalanceBefore = await this.LacToken.balanceOf(user1);
 
 			// claim tokens
-			await claim(this.Vault, user1, ether('2000'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('2000'), receiver1, this.pk, this.chainId, 'Vault');
 
 			// claim tokens
-			await claim(this.Vault, user1, ether('2000'), receiver3, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('2000'), receiver3, this.pk, this.chainId, 'Vault');
 
 			receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
 			receiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);
@@ -222,19 +222,18 @@ contract.only('Simulation1', (accounts) => {
 			const user1BalanceBefore = await this.LacToken.balanceOf(user1);
 
 			// claim  tokens
-			await claim(this.Vault, user1, ether('5000'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('5000'), receiver1, this.pk, this.chainId, 'Vault');
 
 			// claim  tokens
-			await claim(this.Vault, user1, ether('15000'), receiver2, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('15000'), receiver2, this.pk, this.chainId, 'Vault');
 
 			// claim  tokens
-			await claim(this.Vault, user1, ether('3000'), receiver3, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('3000'), receiver3, this.pk, this.chainId, 'Vault');
 
 			receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
 			receiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);
 			receiver3DetailsAfter = await this.Vault.fundReceivers(receiver3);
 
-		
 			console.log(
 				'receiver1DetailsAfter: ',
 				receiver1DetailsAfter.totalAccumulatedFunds.toString()
@@ -283,7 +282,7 @@ contract.only('Simulation1', (accounts) => {
 			const user1BalanceBefore = await this.LacToken.balanceOf(user1);
 
 			// claim 20k tokens
-			await claim(this.Vault, user1, ether('2000'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('2000'), receiver1, this.pk, this.chainId, 'Vault');
 
 			receiver1DetailsAfter = await this.Vault.fundReceivers(receiver1);
 			receiver2DetailsAfter = await this.Vault.fundReceivers(receiver2);

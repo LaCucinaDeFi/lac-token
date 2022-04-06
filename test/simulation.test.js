@@ -12,7 +12,7 @@ const Vault = artifacts.require('Vault');
 const BlockData = artifacts.require('BlockData');
 const SampleToken = artifacts.require('SampleToken');
 
-contract.only('Inclining Simulation', (accounts) => {
+contract.skip('Inclining Simulation', (accounts) => {
 	const owner = accounts[0];
 	const minter = accounts[1];
 	const user1 = accounts[2];
@@ -104,7 +104,7 @@ contract.only('Inclining Simulation', (accounts) => {
 			await time.advanceBlockTo(blocksToIncrease);
 
 			// claim 50k tokens
-			await claim(this.Vault, user1, ether('40000'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('40000'), receiver1, this.pk, this.chainId,'Vault');
 
 			const currentBlockAfter = await this.BlockData.getBlock();
 			console.log('currentBlockAfter: ', currentBlockAfter.toString());
@@ -156,10 +156,10 @@ contract.only('Inclining Simulation', (accounts) => {
 			receiver1Details = await this.Vault.fundReceivers(receiver1);
 
 			// claim 75k tokens
-			await claim(this.Vault, user1, ether('84000'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('84000'), receiver1, this.pk, this.chainId,'Vault');
 
 			// claim 25k tokens
-			await claim(this.Vault, user1, ether('25000'), receiver3, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('25000'), receiver3, this.pk, this.chainId, 'Vault');
 
 			const currentBlockAfter = await this.BlockData.getBlock();
 			console.log('currentBlockAfter: ', currentBlockAfter.toString());
@@ -216,10 +216,10 @@ contract.only('Inclining Simulation', (accounts) => {
 			await time.advanceBlockTo(blocksToIncrease);
 
 			// claim 20k tokens
-			await claim(this.Vault, user1, ether('111500'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('111500'), receiver1, this.pk, this.chainId, 'Vault');
 
 			// claim 20k tokens
-			await claim(this.Vault, user1, ether('26250'), receiver2, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('26250'), receiver2, this.pk, this.chainId, 'Vault');
 
 			const currentBlockAfter = await this.BlockData.getBlock();
 			console.log('currentBlockAfter: ', currentBlockAfter.toString());
@@ -287,13 +287,13 @@ contract.only('Inclining Simulation', (accounts) => {
 			console.log('receiver3Pending: ', receiver3Pending.toString());
 
 			// // claim 64k tokens
-			await claim(this.Vault, user1, ether('112500'), receiver1, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('112500'), receiver1, this.pk, this.chainId, 'Vault');
 
 			// // claim 10.5 tokens
-			await claim(this.Vault, user1, ether('10500'), receiver2, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('10500'), receiver2, this.pk, this.chainId, 'Vault');
 
 			// // claim 10.5 tokens
-			await claim(this.Vault, user1, ether('15500'), receiver3, this.pk, this.chainId);
+			await claim(this.Vault, user1, ether('15500'), receiver3, this.pk, this.chainId, 'Vault');
 
 			const currentBlockAfter = await this.BlockData.getBlock();
 			console.log('currentBlockAfter: ', currentBlockAfter.toString());

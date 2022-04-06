@@ -103,6 +103,18 @@ contract MasterVault is
    ======================== Modifiers ====================================
    =======================================================================
  	*/
+	modifier isSupportedToken(address _tokenAddress) {
+		require(supportedTokens[_tokenAddress], 'MasterVault: UNSUPPORTED_TOKEN');
+		_;
+	}
+
+	modifier onlyUnsupportedToken(address _tokenAddress) {
+		require(
+			_tokenAddress != address(0) && supportedTokens[_tokenAddress] == false,
+			'MasterVault: INVALID_TOKEN_ADDRESS'
+		);
+		_;
+	}
 
 	/*
    =======================================================================
@@ -215,7 +227,15 @@ contract MasterVault is
 		address _account,
 		address _tokenAddress,
 		uint256 _amount
-	) external virtual override nonReentrant whenNotPaused returns (bool) {
+	)
+		external
+		virtual
+		override
+		nonReentrant
+		whenNotPaused
+		isSupportedToken(_tokenAddress)
+		returns (bool)
+	{
 		require(
 			logicContracts[logicContractIds[msg.sender]].isActive,
 			'MasterVault: INACTIVE_LOGIC_CONTRACT'
@@ -226,7 +246,6 @@ contract MasterVault is
 			'MasterVault: CLAIM_DURING_DORMANT_STATE'
 		);
 		require(_account != address(0), 'MasterVault: INVALID_USER');
-		require(supportedTokens[_tokenAddress], 'MasterVault: CLAIM_FOR_UNSUPPORTED_TOKEN');
 
 		require(
 			AddressUpgradeable.isContract(msg.sender) && isOneOfLogicContract(msg.sender),
@@ -268,12 +287,13 @@ contract MasterVault is
 	 * @notice This method allows owner to claim all the tokens of specified token address to given address.
 	 * This method does not allows to claim the supported tokens. ex. LAC, PMA
 	 */
-	function claimAllTokens(address _user, address _tokenAddress) external virtual onlyOwner {
+	function claimAllTokens(address _user, address _tokenAddress)
+		external
+		virtual
+		onlyOwner
+		onlyUnsupportedToken(_tokenAddress)
+	{
 		require(_user != address(0), 'MasterVault: INVALID_USER_ADDRESS');
-		require(
-			_tokenAddress != address(0) && supportedTokens[_tokenAddress] == false,
-			'MasterVault: INVALID_TOKEN_ADDRESS'
-		);
 
 		uint256 tokenAmount = IERC20Upgradeable(_tokenAddress).balanceOf(address(this));
 
@@ -290,15 +310,8 @@ contract MasterVault is
 		address _user,
 		address _tokenAddress,
 		uint256 _amount
-	) external virtual onlyOwner {
+	) external virtual onlyOwner onlyUnsupportedToken(_tokenAddress) {
 		require(_user != address(0), 'MasterVault: INVALID_USER_ADDRESS');
-		require(
-			_tokenAddress != address(0) && !supportedTokens[_tokenAddress],
-			'MasterVault: INVALID_TOKEN_ADDRESS'
-		);
-
-		uint256 tokenAmount = IERC20Upgradeable(_tokenAddress).balanceOf(address(this));
-		require(_amount > 0 && tokenAmount >= _amount, 'MasterVault: INSUFFICIENT_BALANCE');
 
 		require(IERC20Upgradeable(_tokenAddress).transfer(_user, _amount));
 
@@ -321,8 +334,12 @@ contract MasterVault is
 	 * @notice This method allows operator to remove the ERC20/BEP20 token from the supported token list.
 	 * @param _tokenAddress indicates the ERC20/BEP20 token address
 	 */
-	function removeSupportedToken(address _tokenAddress) external virtual onlyOwner {
-		require(supportedTokens[_tokenAddress], 'MasterVault: TOKEN_DOES_NOT_EXISTS');
+	function removeSupportedToken(address _tokenAddress)
+		external
+		virtual
+		onlyOwner
+		isSupportedToken(_tokenAddress)
+	{
 		delete supportedTokens[_tokenAddress];
 
 		emit SupportedTokenRemoved(_tokenAddress);
@@ -365,12 +382,7 @@ contract MasterVault is
 		override
 		returns (bool isLogicContract)
 	{
-		for (uint256 i = 1; i <= logicContractCounter.current(); i++) {
-			if (logicContracts[i].logicAddress == _contract) {
-				isLogicContract = true;
-				break;
-			}
-		}
+		return logicContractIds[_contract] > 0;
 	}
 
 	/**
